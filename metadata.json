@@ -1,0 +1,6 @@
+{
+  "name": "Thief Hunter",
+  "description": "Anti-theft protection and security app for Android",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
