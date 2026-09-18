@@ -20,15 +20,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sensors
-import androidx.compose.material.icons.filled.SimCard
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -71,6 +74,7 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val scrollState = rememberScrollState()
+    val config = state.guardConfig
 
     var pinText by remember(state.masterPin) { mutableStateOf(state.masterPin) }
 
@@ -90,13 +94,251 @@ fun SettingsScreen(
         )
 
         Text(
-            text = viewModel.tr("settings_desc"),
+            text = "Configure security triggers, sensor thresholds, background service and master credentials.",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
-        // 1. LANGUAGE SELECTOR CARD (English, Urdu, Hindi, Arabic, Spanish)
+        // 1. ALL 6 SECURITY FEATURES MASTER CONFIGURATION
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    RoundedCornerShape(18.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Sensor Security Triggers (On/Off)",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NavyPrimary
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Feature 1: Pocket Detection
+                SettingToggleRow(
+                    title = "1. Pocket Detection Alarm",
+                    subtitle = "Proximity + Light sensors detect when pulled from pocket or handbag",
+                    checked = config.pocketDetectionEnabled,
+                    onCheckedChange = { viewModel.updateConfig { c -> c.copy(pocketDetectionEnabled = it) } },
+                    testTag = "settings_switch_pocket"
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Feature 2: Motion Detection
+                SettingToggleRow(
+                    title = "2. Motion Detection Alarm",
+                    subtitle = "Accelerometer detects unauthorized movement from table or surface",
+                    checked = config.motionDetectionEnabled,
+                    onCheckedChange = { viewModel.updateConfig { c -> c.copy(motionDetectionEnabled = it) } },
+                    testTag = "settings_switch_motion"
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Feature 3: Charger Unplug
+                SettingToggleRow(
+                    title = "3. Charger Disconnect Alarm",
+                    subtitle = "Fires sirens immediately if charging cable is unhooked",
+                    checked = config.chargerUnplugEnabled,
+                    onCheckedChange = { viewModel.updateConfig { c -> c.copy(chargerUnplugEnabled = it) } },
+                    testTag = "settings_switch_charger"
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Feature 4: USB Connection Alert
+                SettingToggleRow(
+                    title = "4. USB Cable Attachment Alert",
+                    subtitle = "Detects unauthorized computer/data theft USB interface",
+                    checked = config.usbConnectionEnabled,
+                    onCheckedChange = { viewModel.updateConfig { c -> c.copy(usbConnectionEnabled = it) } },
+                    testTag = "settings_switch_usb"
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Feature 5: Live GPS Tracking
+                SettingToggleRow(
+                    title = "5. Live GPS Satellite Tracking",
+                    subtitle = "Continuous coordinates updates and radar beacon",
+                    checked = config.liveGpsTrackingEnabled,
+                    onCheckedChange = { viewModel.updateConfig { c -> c.copy(liveGpsTrackingEnabled = it) } },
+                    testTag = "settings_switch_gps"
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Feature 6: Intruder Selfie
+                SettingToggleRow(
+                    title = "6. Intruder Selfie Capture",
+                    subtitle = "Silent photo snapshot & log saved upon failed PIN entry",
+                    checked = config.intruderSelfieEnabled,
+                    onCheckedChange = { viewModel.updateConfig { c -> c.copy(intruderSelfieEnabled = it) } },
+                    testTag = "settings_switch_selfie"
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // MOTION SENSITIVITY SLIDER
+                Text(
+                    text = "Motion Sensitivity Threshold: ${config.motionSensitivity.toInt()}/5",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Slider(
+                    value = config.motionSensitivity,
+                    onValueChange = { viewModel.updateConfig { c -> c.copy(motionSensitivity = it) } },
+                    valueRange = 1f..5f,
+                    steps = 3,
+                    colors = SliderDefaults.colors(
+                        thumbColor = YellowAccent,
+                        activeTrackColor = NavyPrimary
+                    ),
+                    modifier = Modifier.testTag("slider_motion_sensitivity")
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 2. FOREGROUND SERVICE STATUS & TOGGLE
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    RoundedCornerShape(18.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Foreground Guard Service",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NavyPrimary
+                        )
+                        Text(
+                            text = if (state.isServiceRunning) "Running in background (Persistent notification active)" else "Service stopped",
+                            fontSize = 11.sp,
+                            color = if (state.isServiceRunning) SafeGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Switch(
+                        checked = state.isServiceRunning,
+                        onCheckedChange = { shouldRun ->
+                            if (shouldRun) viewModel.startForegroundGuardService()
+                            else viewModel.stopForegroundGuardService()
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = YellowAccent,
+                            checkedTrackColor = NavyPrimary
+                        ),
+                        modifier = Modifier.testTag("switch_foreground_service")
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 3. MASTER SECURITY PIN
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    RoundedCornerShape(18.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = NavyPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = viewModel.tr("security_pin"),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NavyPrimary
+                    )
+                }
+
+                Text(
+                    text = "This PIN is required to disarm the alarm siren when triggered.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = pinText,
+                        onValueChange = { if (it.length <= 6) pinText = it },
+                        placeholder = { Text("4-6 Digits") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NavyPrimary),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("input_master_pin")
+                    )
+
+                    Button(
+                        onClick = {
+                            viewModel.updateMasterPin(pinText)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = YellowAccent,
+                            contentColor = NavyDark
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.testTag("btn_save_pin")
+                    ) {
+                        Text(text = viewModel.tr("save"), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 4. MULTI-LANGUAGE SELECTOR
         Card(
             shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -142,7 +384,7 @@ fun SettingsScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     AppLanguage.values().forEach { lang ->
@@ -158,7 +400,7 @@ fun SettingsScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -191,185 +433,44 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // 2. ANTI-THEFT SENSORS & PROTECTION
-        Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                    RoundedCornerShape(18.dp)
-                )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Sensor Safeguards",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = NavyPrimary
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // POCKET DETECTION TOGGLE
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = viewModel.tr("pocket_detection"),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = viewModel.tr("pocket_detection_desc"),
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = state.isPocketAlarmEnabled,
-                        onCheckedChange = { viewModel.togglePocketAlarm(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = YellowAccent,
-                            checkedTrackColor = NavyPrimary
-                        ),
-                        modifier = Modifier.testTag("switch_pocket_alarm")
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // SIM CHANGE ALERT TOGGLE
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = viewModel.tr("sim_protection"),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = viewModel.tr("sim_protection_desc"),
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = state.isSimChangeAlertEnabled,
-                        onCheckedChange = { viewModel.toggleSimChangeAlert(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = YellowAccent,
-                            checkedTrackColor = NavyPrimary
-                        ),
-                        modifier = Modifier.testTag("switch_sim_alarm")
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // MOTION SENSITIVITY SLIDER
-                Text(
-                    text = "${viewModel.tr("motion_sensitivity")}: ${state.motionSensitivity.toInt()}/5",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Slider(
-                    value = state.motionSensitivity,
-                    onValueChange = { viewModel.setMotionSensitivity(it) },
-                    valueRange = 1f..5f,
-                    steps = 3,
-                    colors = SliderDefaults.colors(
-                        thumbColor = YellowAccent,
-                        activeTrackColor = NavyPrimary
-                    ),
-                    modifier = Modifier.testTag("slider_motion_sensitivity")
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // 3. MASTER SECURITY PIN
-        Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                    RoundedCornerShape(18.dp)
-                )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = null,
-                        tint = NavyPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = viewModel.tr("security_pin"),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = NavyPrimary
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = pinText,
-                        onValueChange = { if (it.length <= 6) pinText = it },
-                        placeholder = { Text("4-6 Digits") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = NavyPrimary),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("input_master_pin")
-                    )
-
-                    Button(
-                        onClick = {
-                            viewModel.updateMasterPin(pinText)
-                            viewModel.showMessage("Master Security PIN updated!")
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = YellowAccent,
-                            contentColor = NavyDark
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.testTag("btn_save_pin")
-                    ) {
-                        Text(text = viewModel.tr("save"), fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
         Spacer(modifier = Modifier.height(28.dp))
+    }
+}
+
+@Composable
+fun SettingToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    testTag: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = subtitle,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = YellowAccent,
+                checkedTrackColor = NavyPrimary
+            ),
+            modifier = Modifier.testTag(testTag)
+        )
     }
 }

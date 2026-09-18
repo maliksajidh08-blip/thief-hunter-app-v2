@@ -1,10 +1,15 @@
 package com.example
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -25,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.DropdownMenu
@@ -52,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -59,13 +66,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.data.AppLanguage
 import com.example.data.Screen
 import com.example.ui.CommunityScreen
 import com.example.ui.HomeScreen
+import com.example.ui.IntruderSelfieScreen
 import com.example.ui.LiveTrackingScreen
 import com.example.ui.MyMobilesScreen
 import com.example.ui.ReportTheftScreen
+import com.example.ui.SensorsHubScreen
 import com.example.ui.SettingsScreen
 import com.example.ui.SplashScreen
 import com.example.ui.StolenDevicesScreen
@@ -96,8 +106,33 @@ class MainActivity : ComponentActivity() {
 fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     var showLanguageMenu by remember { mutableStateOf(false) }
+
+    // Request permissions for Notifications, Location and Camera
+    val permissionsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        // Handle runtime results gracefully
+    }
+
+    LaunchedEffect(Unit) {
+        val permissionsToRequest = mutableListOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.CAMERA
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val needed = permissionsToRequest.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (needed.isNotEmpty()) {
+            permissionsLauncher.launch(needed.toTypedArray())
+        }
+    }
 
     val layoutDirection = if (state.selectedLanguage.isRtl) {
         LayoutDirection.Rtl
@@ -143,6 +178,8 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
                                 } else {
                                     Text(
                                         text = when (state.currentScreen) {
+                                            Screen.SENSORS_HUB -> "Sensors & Alarms"
+                                            Screen.INTRUDER_SELFIE -> "Intruder Vault"
                                             Screen.MY_MOBILES -> viewModel.tr("my_mobiles")
                                             Screen.STOLEN_DEVICES -> viewModel.tr("stolen_devices")
                                             Screen.LIVE_TRACKING -> viewModel.tr("live_tracking")
@@ -173,6 +210,20 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
                             }
                         },
                         actions = {
+                            // SENSORS HUB QUICK SHORTCUT
+                            if (state.currentScreen != Screen.SENSORS_HUB) {
+                                IconButton(
+                                    onClick = { viewModel.navigateTo(Screen.SENSORS_HUB) },
+                                    modifier = Modifier.testTag("top_bar_sensors_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sensors,
+                                        contentDescription = "Sensors Hub",
+                                        tint = if (state.isSystemArmed) YellowAccent else Color.White
+                                    )
+                                }
+                            }
+
                             // LANGUAGE PICKER ACTION
                             Box {
                                 Surface(
@@ -256,6 +307,8 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
                 when (targetScreen) {
                     Screen.SPLASH -> SplashScreen(viewModel = viewModel)
                     Screen.HOME -> HomeScreen(viewModel = viewModel)
+                    Screen.SENSORS_HUB -> SensorsHubScreen(viewModel = viewModel)
+                    Screen.INTRUDER_SELFIE -> IntruderSelfieScreen(viewModel = viewModel)
                     Screen.MY_MOBILES -> MyMobilesScreen(viewModel = viewModel)
                     Screen.STOLEN_DEVICES -> StolenDevicesScreen(viewModel = viewModel)
                     Screen.LIVE_TRACKING -> LiveTrackingScreen(viewModel = viewModel)

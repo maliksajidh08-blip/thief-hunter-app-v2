@@ -71,13 +71,23 @@ data class LiveTrackerState(
     val isTorchFlashing: Boolean = false
 )
 
+data class IntruderCapture(
+    val id: String,
+    val timestamp: String,
+    val triggerReason: String,
+    val photoUri: String? = null,
+    val wasPinWrong: Boolean = true
+)
+
 enum class Screen(val titleKey: String) {
     SPLASH("app_name"),
     HOME("home_title"),
+    SENSORS_HUB("sensors_hub"),
     MY_MOBILES("my_mobiles"),
     STOLEN_DEVICES("stolen_devices"),
     LIVE_TRACKING("live_tracking"),
     COMMUNITY("community"),
     REPORT_THEFT("report_theft"),
+    INTRUDER_SELFIE("intruder_selfie"),
     SETTINGS("settings")
 }

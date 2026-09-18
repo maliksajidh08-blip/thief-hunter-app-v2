@@ -1,6 +1,11 @@
 package com.example.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColor
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.GpsFixed
@@ -28,6 +34,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VolumeOff
@@ -71,7 +78,18 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
-    val isRinging = state.liveTrackerState.isSirenRinging
+    val isRinging = state.isSirenPlaying
+
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseBorderColor by infiniteTransition.animateColor(
+        initialValue = AlertRed,
+        targetValue = YellowAccent,
+        animationSpec = infiniteRepeatable(
+            animation = tween(450),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseBorderColor"
+    )
 
     Column(
         modifier = modifier
@@ -79,26 +97,31 @@ fun HomeScreen(
             .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        // TOP SECURITY STATUS CARD
+        // TOP SECURITY STATUS CARD (DYNAMICS FOR SENSORS & SIREN)
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(
-                containerColor = NavyPrimary
+                containerColor = if (isRinging) AlertRed else NavyPrimary
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp)
+                .padding(vertical = 6.dp)
+                .then(
+                    if (isRinging) Modifier.border(2.dp, pulseBorderColor, RoundedCornerShape(20.dp))
+                    else Modifier
+                )
                 .testTag("home_status_card")
         ) {
             Column(
                 modifier = Modifier
                     .background(
                         brush = Brush.horizontalGradient(
-                            listOf(NavyDark, NavyPrimary)
+                            if (isRinging) listOf(AlertRed, Color(0xFF7B0000))
+                            else listOf(NavyDark, NavyPrimary)
                         )
                     )
-                    .padding(18.dp)
+                    .padding(16.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -111,10 +134,10 @@ fun HomeScreen(
                             modifier = Modifier
                                 .size(44.dp)
                                 .clip(CircleShape)
-                                .background(YellowAccent)
+                                .background(if (isRinging) YellowAccent else if (state.isSystemArmed) SafeGreen else YellowAccent)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Shield,
+                                imageVector = if (isRinging) Icons.Default.Warning else Icons.Default.Shield,
                                 contentDescription = "Shield Active",
                                 tint = NavyDark,
                                 modifier = Modifier.size(26.dp)
@@ -125,8 +148,10 @@ fun HomeScreen(
 
                         Column {
                             Text(
-                                text = viewModel.tr("device_protected"),
-                                fontSize = 18.sp,
+                                text = if (isRinging) "EMERGENCY ALARM ACTIVE"
+                                else if (state.isSystemArmed) "Device Sensors Armed"
+                                else viewModel.tr("device_protected"),
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
@@ -135,32 +160,55 @@ fun HomeScreen(
                                     modifier = Modifier
                                         .size(8.dp)
                                         .clip(CircleShape)
-                                        .background(SafeGreen)
+                                        .background(if (isRinging) YellowAccent else SafeGreen)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = viewModel.tr("shield_active"),
+                                    text = if (isRinging) "${state.activeBreachTrigger?.title ?: "Breach"} Alert"
+                                    else if (state.isSystemArmed) "All 6 Sensors Active"
+                                    else viewModel.tr("shield_active"),
                                     fontSize = 12.sp,
                                     color = YellowAccent
                                 )
                             }
                         }
                     }
+
+                    // QUICK LINK TO SENSORS HUB
+                    Surface(
+                        color = Color.White.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.clickable { viewModel.navigateTo(Screen.SENSORS_HUB) }
+                    ) {
+                        Text(
+                            text = if (state.isSystemArmed) "ARMED" else "ARM HUB",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = YellowAccent,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // SIREN TRIGGER BUTTON
                 Button(
-                    onClick = { viewModel.triggerGlobalSiren() },
+                    onClick = {
+                        if (isRinging) {
+                            viewModel.navigateTo(Screen.SENSORS_HUB)
+                        } else {
+                            viewModel.triggerGlobalSiren()
+                        }
+                    },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isRinging) AlertRed else YellowAccent,
-                        contentColor = if (isRinging) Color.White else NavyDark
+                        containerColor = if (isRinging) YellowAccent else YellowAccent,
+                        contentColor = NavyDark
                     ),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(46.dp)
+                        .height(44.dp)
                         .testTag("siren_trigger_button")
                 ) {
                     Icon(
@@ -170,33 +218,69 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (isRinging) viewModel.tr("quick_stop") else viewModel.tr("quick_alert"),
+                        text = if (isRinging) "DISARM WITH PIN / STOP SIREN" else viewModel.tr("quick_alert"),
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
+                        fontSize = 13.sp
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         Text(
             text = viewModel.tr("home_title"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
         )
 
-        // 6 MAIN BUTTONS GRID
+        // NAVIGATION GRID INCLUDING SENSORS HUB & INTRUDER SELFIE
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = 12.dp)
+                .padding(bottom = 8.dp)
         ) {
+            item {
+                HomeMenuCard(
+                    title = "Sensors & Alarms",
+                    description = if (state.isSystemArmed) "Armed (6 Active)" else "Pocket, Accel, USB",
+                    icon = Icons.Default.Sensors,
+                    badgeText = if (state.isSystemArmed) "ARMED" else "READY",
+                    badgeColor = if (state.isSystemArmed) SafeGreen else AlertRed,
+                    testTag = "btn_sensors_hub",
+                    onClick = { viewModel.navigateTo(Screen.SENSORS_HUB) }
+                )
+            }
+
+            item {
+                HomeMenuCard(
+                    title = "Intruder Selfie",
+                    description = "${state.intruderCaptures.size} Breach Logs",
+                    icon = Icons.Default.CameraAlt,
+                    badgeText = "CAMERA",
+                    badgeColor = NavyPrimary,
+                    testTag = "btn_intruder_selfie",
+                    onClick = { viewModel.navigateTo(Screen.INTRUDER_SELFIE) }
+                )
+            }
+
+            item {
+                HomeMenuCard(
+                    title = viewModel.tr("live_tracking"),
+                    description = viewModel.tr("live_tracking_desc"),
+                    icon = Icons.Default.GpsFixed,
+                    badgeText = "GPS",
+                    badgeColor = NavyDark,
+                    testTag = "btn_live_tracking",
+                    onClick = { viewModel.navigateTo(Screen.LIVE_TRACKING) }
+                )
+            }
+
             item {
                 HomeMenuCard(
                     title = viewModel.tr("my_mobiles"),
@@ -218,18 +302,6 @@ fun HomeScreen(
                     badgeColor = YellowDark,
                     testTag = "btn_stolen_devices",
                     onClick = { viewModel.navigateTo(Screen.STOLEN_DEVICES) }
-                )
-            }
-
-            item {
-                HomeMenuCard(
-                    title = viewModel.tr("live_tracking"),
-                    description = viewModel.tr("live_tracking_desc"),
-                    icon = Icons.Default.GpsFixed,
-                    badgeText = "RADAR",
-                    badgeColor = NavyPrimary,
-                    testTag = "btn_live_tracking",
-                    onClick = { viewModel.navigateTo(Screen.LIVE_TRACKING) }
                 )
             }
 
@@ -260,7 +332,7 @@ fun HomeScreen(
             item {
                 HomeMenuCard(
                     title = viewModel.tr("settings"),
-                    description = state.selectedLanguage.nativeName,
+                    description = "Sensors & Languages",
                     icon = Icons.Default.Settings,
                     badgeText = state.selectedLanguage.code.uppercase(),
                     badgeColor = NavyDark,
@@ -287,10 +359,10 @@ fun HomeMenuCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .height(148.dp)
+            .height(138.dp)
             .border(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
@@ -302,7 +374,7 @@ fun HomeMenuCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(14.dp),
+                .padding(12.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
@@ -313,15 +385,15 @@ fun HomeMenuCard(
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .background(NavyPrimary.copy(alpha = 0.1f))
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = title,
                         tint = NavyPrimary,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
@@ -334,7 +406,7 @@ fun HomeMenuCard(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = badgeColor,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
@@ -342,7 +414,7 @@ fun HomeMenuCard(
             Column {
                 Text(
                     text = title,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
