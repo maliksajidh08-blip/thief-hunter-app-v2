@@ -26,7 +26,12 @@ data class MobileDevice(
     val isSirenPlaying: Boolean = false,
     val simCardNumber: String = "+92 300 ••••123",
     val lastSeenAddress: String = "Gulberg III, Main Blvd",
-    val lastSeenTime: String = "Just now"
+    val lastSeenTime: String = "Just now",
+    val isStolen: Boolean = false,
+    val stolenTimestamp: String? = null,
+    val emergencyContactPhone: String = "+92 300 1234567",
+    val lastKnownLatitude: Double = 31.5204,
+    val lastKnownLongitude: Double = 74.3587
 )
 
 enum class ReportStatus {

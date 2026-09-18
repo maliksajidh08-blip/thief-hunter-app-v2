@@ -234,7 +234,7 @@ fun SensorsHubScreen(
                         color = NavyPrimary
                     )
                     Text(
-                        text = "Default PIN is ${state.masterPin}. Unauthorized entries trigger intruder selfie log.",
+                        text = "Default PIN: ${state.masterPin}. On 3rd wrong PIN, silent front camera photo is automatically captured and saved.",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp)

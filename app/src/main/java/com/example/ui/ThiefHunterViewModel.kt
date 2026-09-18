@@ -18,17 +18,22 @@ import com.example.data.ReportStatus
 import com.example.data.Screen
 import com.example.data.StolenReport
 import com.example.security.AlarmSirenEngine
+import com.example.security.CameraCaptureHelper
 import com.example.security.GuardConfig
 import com.example.security.SecurityNotificationHelper
 import com.example.security.SensorSecurityManager
 import com.example.security.SensorTelemetry
+import com.example.security.SmsAlertHelper
 import com.example.security.ThiefGuardService
 import com.example.security.TriggerReason
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,6 +52,10 @@ data class UiState(
     val masterPin: String = "9051",
     val enteredPinAttempt: String = "",
     val pinError: Boolean = false,
+    val failedPinAttempts: Int = 0,
+    val isCameraCapturing: Boolean = false,
+    val triggerPhotoCaptureEvent: Long = 0L,
+    val lastCapturedPhotoPath: String? = null,
     val intruderCaptures: List<IntruderCapture> = listOf(
         IntruderCapture(
             id = "cap_1",
@@ -68,7 +77,12 @@ data class UiState(
             isSirenPlaying = false,
             simCardNumber = "+92 300 4589211",
             lastSeenAddress = "Liberty Market, Lahore",
-            lastSeenTime = "Active now"
+            lastSeenTime = "Active now",
+            isStolen = false,
+            stolenTimestamp = null,
+            emergencyContactPhone = "+92 300 4589211",
+            lastKnownLatitude = 31.5204,
+            lastKnownLongitude = 74.3587
         ),
         MobileDevice(
             id = "dev_2",
@@ -81,7 +95,66 @@ data class UiState(
             isSirenPlaying = false,
             simCardNumber = "+92 321 8892104",
             lastSeenAddress = "Tech Hub, Block H",
-            lastSeenTime = "12 mins ago"
+            lastSeenTime = "12 mins ago",
+            isStolen = false,
+            stolenTimestamp = null,
+            emergencyContactPhone = "+92 321 8892104",
+            lastKnownLatitude = 31.5280,
+            lastKnownLongitude = 74.3610
+        ),
+        MobileDevice(
+            id = "dev_3",
+            name = "Personal iPhone 15 Pro",
+            model = "Apple iPhone 15 Pro Max",
+            imei = "354129087654321",
+            batteryPercent = 75,
+            isSecured = true,
+            isLocked = false,
+            isSirenPlaying = false,
+            simCardNumber = "+92 333 7712345",
+            lastSeenAddress = "Gulberg III, Main Blvd",
+            lastSeenTime = "25 mins ago",
+            isStolen = false,
+            stolenTimestamp = null,
+            emergencyContactPhone = "+92 333 7712345",
+            lastKnownLatitude = 31.5122,
+            lastKnownLongitude = 74.3489
+        ),
+        MobileDevice(
+            id = "dev_4",
+            name = "Family Backup Mobile",
+            model = "Xiaomi Redmi Note 13 Pro",
+            imei = "869402061234567",
+            batteryPercent = 91,
+            isSecured = true,
+            isLocked = false,
+            isSirenPlaying = false,
+            simCardNumber = "+92 345 9901234",
+            lastSeenAddress = "Cantt Saddar Bazaar",
+            lastSeenTime = "1 hour ago",
+            isStolen = false,
+            stolenTimestamp = null,
+            emergencyContactPhone = "+92 345 9901234",
+            lastKnownLatitude = 31.5390,
+            lastKnownLongitude = 74.3720
+        ),
+        MobileDevice(
+            id = "dev_5",
+            name = "Travel OnePlus 12",
+            model = "OnePlus 12 5G Flagship",
+            imei = "357891043218765",
+            batteryPercent = 43,
+            isSecured = true,
+            isLocked = false,
+            isSirenPlaying = false,
+            simCardNumber = "+92 302 1122334",
+            lastSeenAddress = "Allama Iqbal Airport Terminal",
+            lastSeenTime = "2 hours ago",
+            isStolen = false,
+            stolenTimestamp = null,
+            emergencyContactPhone = "+92 302 1122334",
+            lastKnownLatitude = 31.5217,
+            lastKnownLongitude = 74.4036
         )
     ),
     val stolenReports: List<StolenReport> = listOf(
@@ -325,6 +398,8 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         showMessage("Anti-Theft Guard Disarmed.")
     }
 
+    private var stolenTrackingJob: Job? = null
+
     fun triggerManualBreach(reason: TriggerReason) {
         localSensorManager.fireTrigger(reason)
     }
@@ -332,15 +407,58 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     fun verifyAndDisarmPin(pin: String): Boolean {
         if (pin == _uiState.value.masterPin) {
             disarmSystem()
-            _uiState.update { it.copy(enteredPinAttempt = "", pinError = false) }
+            _uiState.update {
+                it.copy(
+                    enteredPinAttempt = "",
+                    pinError = false,
+                    failedPinAttempts = 0
+                )
+            }
             showMessage("Master PIN verified. Guard disarmed.")
             return true
         } else {
-            _uiState.update { it.copy(pinError = true) }
-            recordIntruderCapture("Wrong Master PIN entered: $pin")
-            showMessage("Incorrect PIN! Intruder alert logged.")
+            val newAttempts = _uiState.value.failedPinAttempts + 1
+            _uiState.update {
+                it.copy(
+                    pinError = true,
+                    failedPinAttempts = newAttempts
+                )
+            }
+
+            if (newAttempts >= 3) {
+                // Request automatic front camera capture via UI event
+                _uiState.update {
+                    it.copy(
+                        triggerPhotoCaptureEvent = System.currentTimeMillis(),
+                        isCameraCapturing = true
+                    )
+                }
+                recordIntruderCapture("3rd Wrong PIN attempt: '$pin' - Front Camera Triggered")
+                showMessage("3rd Wrong PIN! Taking silent front camera intruder selfie...")
+            } else {
+                val remaining = 3 - newAttempts
+                recordIntruderCapture("Wrong Master PIN entered: $pin (Attempt $newAttempts/3)")
+                showMessage("Incorrect PIN! ($newAttempts/3). $remaining attempt(s) until photo capture.")
+            }
             return false
         }
+    }
+
+    fun onPhotoCaptured(filePath: String, isManualTest: Boolean = false) {
+        val reason = if (isManualTest) "Manual Camera Test Snapshot" else "3rd Wrong PIN Intruder Selfie"
+        recordIntruderCapture(reason, filePath)
+        _uiState.update {
+            it.copy(
+                isCameraCapturing = false,
+                lastCapturedPhotoPath = filePath
+            )
+        }
+        showMessage(if (isManualTest) "Test photo captured and stored in Vault!" else "Intruder photo saved to Vault!")
+    }
+
+    fun onPhotoCaptureFailed(errorMsg: String) {
+        _uiState.update { it.copy(isCameraCapturing = false) }
+        showMessage("Camera capture note: $errorMsg")
     }
 
     fun recordIntruderCapture(reasonText: String, photoUri: String? = null) {
@@ -358,7 +476,13 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun clearIntruderCaptures() {
-        _uiState.update { it.copy(intruderCaptures = emptyList()) }
+        _uiState.update {
+            it.copy(
+                intruderCaptures = emptyList(),
+                lastCapturedPhotoPath = null,
+                failedPinAttempts = 0
+            )
+        }
         showMessage("Intruder log cleared.")
     }
 
@@ -539,6 +663,134 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         showMessage(tr("report_success"))
     }
 
+    fun markDeviceAsStolen(deviceId: String) {
+        val now = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault()).format(Date())
+        var targetDevice: MobileDevice? = null
+
+        _uiState.update { state ->
+            val updated = state.myDevices.map { dev ->
+                if (dev.id == deviceId) {
+                    val lat = state.sensorTelemetry.latitude
+                    val lng = state.sensorTelemetry.longitude
+                    val stolenDev = dev.copy(
+                        isStolen = true,
+                        stolenTimestamp = now,
+                        isLocked = true,
+                        isSecured = false,
+                        lastSeenTime = "Stolen mode active",
+                        lastKnownLatitude = lat,
+                        lastKnownLongitude = lng
+                    )
+                    targetDevice = stolenDev
+                    stolenDev
+                } else dev
+            }
+            state.copy(myDevices = updated)
+        }
+
+        targetDevice?.let { dev ->
+            // Send initial emergency SMS alert with coordinates
+            sendSmsAlertForDevice(dev)
+            startStolenDeviceTrackingLoop()
+            showMessage("⚠️ ${dev.name} marked as STOLEN! Red badge active, 30s location tracking & SMS alerts engaged.")
+        }
+    }
+
+    fun unmarkDeviceStolen(deviceId: String) {
+        _uiState.update { state ->
+            val updated = state.myDevices.map { dev ->
+                if (dev.id == deviceId) {
+                    dev.copy(
+                        isStolen = false,
+                        stolenTimestamp = null,
+                        isSecured = true,
+                        lastSeenTime = "Recovered just now"
+                    )
+                } else dev
+            }
+            state.copy(myDevices = updated)
+        }
+
+        val anyStillStolen = _uiState.value.myDevices.any { it.isStolen }
+        if (!anyStillStolen) {
+            stolenTrackingJob?.cancel()
+            stolenTrackingJob = null
+        }
+        showMessage("Device recovered! Stolen mode deactivated.")
+    }
+
+    fun updateDeviceEmergencyPhone(deviceId: String, newPhone: String) {
+        _uiState.update { state ->
+            val updated = state.myDevices.map { dev ->
+                if (dev.id == deviceId) dev.copy(emergencyContactPhone = newPhone) else dev
+            }
+            state.copy(myDevices = updated)
+        }
+        showMessage("Emergency alert phone updated.")
+    }
+
+    fun sendManualSmsAlert(deviceId: String) {
+        val dev = _uiState.value.myDevices.find { it.id == deviceId } ?: return
+        sendSmsAlertForDevice(dev)
+    }
+
+    private fun sendSmsAlertForDevice(device: MobileDevice) {
+        val app = getApplication<Application>()
+        val lat = _uiState.value.sensorTelemetry.latitude
+        val lng = _uiState.value.sensorTelemetry.longitude
+        val mapsUrl = "https://maps.google.com/?q=$lat,$lng"
+        val message = "🚨 THIEF HUNTER EMERGENCY ALERT: Device '${device.name}' (${device.model}, IMEI: ${device.imei}) marked STOLEN! Live GPS: $mapsUrl (Lat: $lat, Lng: $lng). Battery: ${_uiState.value.sensorTelemetry.batteryPct}%. Time: ${device.stolenTimestamp ?: "Now"}"
+
+        SmsAlertHelper.sendSms(
+            context = app,
+            phoneNumber = device.emergencyContactPhone,
+            message = message,
+            onSuccess = {
+                showMessage("SMS alert sent to ${device.emergencyContactPhone} with live GPS location!")
+            },
+            onError = { err ->
+                showMessage("SMS alert dispatched: $err")
+            }
+        )
+    }
+
+    private fun startStolenDeviceTrackingLoop() {
+        if (stolenTrackingJob?.isActive == true) return
+        stolenTrackingJob = viewModelScope.launch {
+            var cycleCount = 0
+            while (true) {
+                delay(30_000L) // Every 30 seconds update location
+                cycleCount++
+
+                val currentLat = _uiState.value.sensorTelemetry.latitude
+                val currentLng = _uiState.value.sensorTelemetry.longitude
+                val timeNow = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+
+                _uiState.update { state ->
+                    val updated = state.myDevices.map { dev ->
+                        if (dev.isStolen) {
+                            dev.copy(
+                                lastKnownLatitude = currentLat,
+                                lastKnownLongitude = currentLng,
+                                lastSeenAddress = "Tracked via GPS ($currentLat, $currentLng)",
+                                lastSeenTime = "30s sync at $timeNow"
+                            )
+                        } else dev
+                    }
+                    state.copy(myDevices = updated)
+                }
+
+                // Every 15 minutes (30 updates * 30 seconds = 900s = 15 minutes), send periodic SMS alert
+                if (cycleCount % 30 == 0) {
+                    val stolenDevs = _uiState.value.myDevices.filter { it.isStolen }
+                    stolenDevs.forEach { dev ->
+                        sendSmsAlertForDevice(dev)
+                    }
+                }
+            }
+        }
+    }
+
     fun updateMasterPin(newPin: String) {
         if (newPin.length in 4..6) {
             _uiState.update { it.copy(masterPin = newPin) }
@@ -548,6 +800,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
 
     override fun onCleared() {
         super.onCleared()
+        stolenTrackingJob?.cancel()
         localSensorManager.onDestroy()
         localSirenEngine.stopSiren()
         if (isBound) {
