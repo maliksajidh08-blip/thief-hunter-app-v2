@@ -67,9 +67,12 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.AppLanguage
 import com.example.data.Screen
+import com.example.security.CameraCaptureHelper
 import com.example.ui.CommunityScreen
+import com.example.ui.FamilyNetworkScreen
 import com.example.ui.HomeScreen
 import com.example.ui.IntruderSelfieScreen
 import com.example.ui.LiveTrackingScreen
@@ -144,6 +147,23 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
     // Handle back button
     BackHandler(enabled = state.currentScreen != Screen.HOME && state.currentScreen != Screen.SPLASH) {
         viewModel.navigateTo(Screen.HOME)
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(state.triggerPhotoCaptureEvent) {
+        if (state.triggerPhotoCaptureEvent > 0L) {
+            CameraCaptureHelper.takeFrontCameraPhotoSilent(
+                context = context,
+                lifecycleOwner = lifecycleOwner,
+                onPhotoSaved = { savedPath ->
+                    viewModel.onPhotoCaptured(savedPath, isManualTest = false)
+                },
+                onError = { err ->
+                    viewModel.onPhotoCaptureFailed(err)
+                }
+            )
+        }
     }
 
     LaunchedEffect(state.activeSnackbarMessage) {
@@ -308,6 +328,7 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
                 when (targetScreen) {
                     Screen.SPLASH -> SplashScreen(viewModel = viewModel)
                     Screen.HOME -> HomeScreen(viewModel = viewModel)
+                    Screen.FAMILY_NETWORK -> FamilyNetworkScreen(viewModel = viewModel)
                     Screen.SENSORS_HUB -> SensorsHubScreen(viewModel = viewModel)
                     Screen.INTRUDER_SELFIE -> IntruderSelfieScreen(viewModel = viewModel)
                     Screen.MY_MOBILES -> MyMobilesScreen(viewModel = viewModel)

@@ -63,7 +63,8 @@ object Localization {
             "urgent" to "URGENT",
             "clean_imei" to "CLEAN IMEI - No stolen reports found",
             "stolen_imei" to "STOLEN ALERT - Flagged in Police Registry",
-            "simulated_alert" to "Anti-theft high-pitch siren sounding!"
+            "simulated_alert" to "Anti-theft high-pitch siren sounding!",
+            "family_network" to "Family Security Network"
         ),
         AppLanguage.URDU to mapOf(
             "app_name" to "تھیف ہنٹر",
@@ -71,6 +72,7 @@ object Localization {
             "splash_loading" to "سیکیورٹی شیلڈ فعال ہو رہی ہے...",
             "enter_app" to "ڈیش بورڈ میں داخل ہوں",
             "home_title" to "سیکیورٹی کمانڈ سینٹر",
+            "family_network" to "فیملی سیکیورٹی نیٹ ورک",
             "device_protected" to "آپ کا فون محفوظ ہے",
             "shield_active" to "اینٹی تھیفٹ سیکیورٹی فعال ہے",
             "quick_alert" to "سائرن بجائیں",

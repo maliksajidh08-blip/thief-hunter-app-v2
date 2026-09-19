@@ -84,9 +84,59 @@ data class IntruderCapture(
     val wasPinWrong: Boolean = true
 )
 
+enum class FamilyDeviceRole {
+    MASTER,
+    MEMBER,
+    FAILOVER_GUARDIAN
+}
+
+data class FamilyDeviceNode(
+    val id: String,
+    val name: String,
+    val ownerName: String,
+    val model: String,
+    val role: FamilyDeviceRole = FamilyDeviceRole.MEMBER,
+    val isOnline: Boolean = true,
+    val batteryPct: Int = 85,
+    val isArmed: Boolean = true,
+    val isStolen: Boolean = false,
+    val isLocked: Boolean = false,
+    val isSirenActive: Boolean = false,
+    val latitude: Double = 31.5204,
+    val longitude: Double = 74.3587,
+    val address: String = "Liberty Market, Lahore",
+    val lastSeenTime: String = "Active now",
+    val simNumber: String = "+92 300 ••••111",
+    val emergencyPhone: String = "+92 300 4589211",
+    val capturedPhotoCount: Int = 0,
+    val lastPhotoUri: String? = null
+)
+
+data class FamilyAlert(
+    val id: String,
+    val timestamp: String,
+    val originDeviceId: String,
+    val originDeviceName: String,
+    val title: String,
+    val description: String,
+    val isUrgent: Boolean = true
+)
+
+data class FamilyNetworkState(
+    val accountEmail: String = "sajidhr905@gmail.com",
+    val familyName: String = "Sajid Family Guard Group",
+    val masterDeviceId: String = "fam_1",
+    val currentActiveDeviceId: String = "fam_1",
+    val isFailoverActive: Boolean = false,
+    val failoverGuardianDeviceId: String? = null,
+    val devices: List<FamilyDeviceNode> = emptyList(),
+    val alerts: List<FamilyAlert> = emptyList()
+)
+
 enum class Screen(val titleKey: String) {
     SPLASH("app_name"),
     HOME("home_title"),
+    FAMILY_NETWORK("family_network"),
     SENSORS_HUB("sensors_hub"),
     MY_MOBILES("my_mobiles"),
     STOLEN_DEVICES("stolen_devices"),
@@ -96,3 +146,4 @@ enum class Screen(val titleKey: String) {
     INTRUDER_SELFIE("intruder_selfie"),
     SETTINGS("settings")
 }
+

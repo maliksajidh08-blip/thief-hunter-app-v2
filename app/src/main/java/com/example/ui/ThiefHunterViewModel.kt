@@ -10,6 +10,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppLanguage
 import com.example.data.CommunityAlert
+import com.example.data.FamilyAlert
+import com.example.data.FamilyDeviceNode
+import com.example.data.FamilyDeviceRole
+import com.example.data.FamilyNetworkState
 import com.example.data.IntruderCapture
 import com.example.data.LiveTrackerState
 import com.example.data.Localization
@@ -228,7 +232,128 @@ data class UiState(
     val searchResultReport: StolenReport? = null,
     val hasSearched: Boolean = false,
     val liveTrackerState: LiveTrackerState = LiveTrackerState(),
-    val activeSnackbarMessage: String? = null
+    val activeSnackbarMessage: String? = null,
+    val familyNetwork: FamilyNetworkState = FamilyNetworkState(
+        accountEmail = "sajidhr905@gmail.com",
+        familyName = "Sajid Family Guard Group",
+        masterDeviceId = "fam_1",
+        currentActiveDeviceId = "fam_1",
+        isFailoverActive = false,
+        failoverGuardianDeviceId = null,
+        devices = listOf(
+            FamilyDeviceNode(
+                id = "fam_1",
+                name = "Dad's Galaxy S24 Ultra",
+                ownerName = "Sajid (Dad)",
+                model = "Samsung Galaxy S24 Ultra",
+                role = FamilyDeviceRole.MASTER,
+                isOnline = true,
+                batteryPct = 88,
+                isArmed = true,
+                isStolen = false,
+                isLocked = false,
+                isSirenActive = false,
+                latitude = 31.5204,
+                longitude = 74.3587,
+                address = "Liberty Market, Gulberg III",
+                lastSeenTime = "Active now",
+                simNumber = "+92 300 4589211",
+                emergencyPhone = "+92 300 4589211",
+                capturedPhotoCount = 1
+            ),
+            FamilyDeviceNode(
+                id = "fam_2",
+                name = "Mom's Galaxy A54",
+                ownerName = "Mom",
+                model = "Samsung Galaxy A54 5G",
+                role = FamilyDeviceRole.MEMBER,
+                isOnline = true,
+                batteryPct = 76,
+                isArmed = true,
+                isStolen = false,
+                isLocked = false,
+                isSirenActive = false,
+                latitude = 31.5280,
+                longitude = 74.3610,
+                address = "Home - Block H, Gulberg",
+                lastSeenTime = "Active now",
+                simNumber = "+92 321 8892104",
+                emergencyPhone = "+92 321 8892104",
+                capturedPhotoCount = 0
+            ),
+            FamilyDeviceNode(
+                id = "fam_3",
+                name = "Son's Pixel 8",
+                ownerName = "Ali (Son)",
+                model = "Google Pixel 8",
+                role = FamilyDeviceRole.MEMBER,
+                isOnline = true,
+                batteryPct = 92,
+                isArmed = true,
+                isStolen = false,
+                isLocked = false,
+                isSirenActive = false,
+                latitude = 31.5122,
+                longitude = 74.3489,
+                address = "University Campus, Garden Town",
+                lastSeenTime = "5 mins ago",
+                simNumber = "+92 333 7712345",
+                emergencyPhone = "+92 333 7712345",
+                capturedPhotoCount = 0
+            ),
+            FamilyDeviceNode(
+                id = "fam_4",
+                name = "Daughter's Redmi Note 13",
+                ownerName = "Fatima (Daughter)",
+                model = "Xiaomi Redmi Note 13",
+                role = FamilyDeviceRole.MEMBER,
+                isOnline = true,
+                batteryPct = 68,
+                isArmed = true,
+                isStolen = false,
+                isLocked = false,
+                isSirenActive = false,
+                latitude = 31.5390,
+                longitude = 74.3720,
+                address = "College Road, Lahore Cantt",
+                lastSeenTime = "12 mins ago",
+                simNumber = "+92 345 9901234",
+                emergencyPhone = "+92 345 9901234",
+                capturedPhotoCount = 0
+            ),
+            FamilyDeviceNode(
+                id = "fam_5",
+                name = "Home Backup Galaxy S21",
+                ownerName = "Home Safe Node",
+                model = "Samsung Galaxy S21 FE",
+                role = FamilyDeviceRole.MEMBER,
+                isOnline = true,
+                batteryPct = 99,
+                isArmed = true,
+                isStolen = false,
+                isLocked = false,
+                isSirenActive = false,
+                latitude = 31.5217,
+                longitude = 74.4036,
+                address = "Home Base Desk, Living Room",
+                lastSeenTime = "Active (Charging)",
+                simNumber = "+92 302 1122334",
+                emergencyPhone = "+92 302 1122334",
+                capturedPhotoCount = 0
+            )
+        ),
+        alerts = listOf(
+            FamilyAlert(
+                id = "alt_init",
+                timestamp = "Today, 09:00 AM",
+                originDeviceId = "fam_1",
+                originDeviceName = "Dad's Galaxy S24 Ultra",
+                title = "Family Network Online",
+                description = "All 5 devices securely synchronized under sajidhr905@gmail.com",
+                isUrgent = false
+            )
+        )
+    )
 )
 
 class ThiefHunterViewModel(application: Application) : AndroidViewModel(application) {
@@ -310,7 +435,8 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         localSensorManager.onTriggerAlarm = { reason ->
             val config = _uiState.value.guardConfig
             val shouldTrigger = when (reason) {
-                TriggerReason.POCKET_REMOVAL -> config.pocketDetectionEnabled
+                TriggerReason.POCKET_REMOVAL,
+                TriggerReason.HAND_GRAB_DETECTED -> config.pocketDetectionEnabled
                 TriggerReason.MOTION_DETECTED -> config.motionDetectionEnabled
                 TriggerReason.CHARGER_UNPLUGGED -> config.chargerUnplugEnabled
                 TriggerReason.USB_CONNECTED -> config.usbConnectionEnabled
@@ -602,6 +728,22 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun stopGlobalSiren() {
+        localSirenEngine.stopSiren()
+        localNotificationHelper.cancelTriggerNotification()
+        _uiState.update {
+            it.copy(
+                isSirenPlaying = false,
+                activeBreachTrigger = null
+            )
+        }
+        showMessage(tr("quick_stop"))
+    }
+
+    fun triggerAlarmWithReason(reason: TriggerReason) {
+        localSensorManager.fireTrigger(reason)
+    }
+
     fun toggleTrackerLock() {
         val isLocked = _uiState.value.liveTrackerState.isDeviceLocked
         _uiState.update { state ->
@@ -796,6 +938,282 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
             _uiState.update { it.copy(masterPin = newPin) }
             showMessage("Master Security PIN updated!")
         }
+    }
+
+    // ==========================================
+    // FAMILY SECURITY NETWORK OPERATIONS
+    // ==========================================
+
+    fun switchActivePerspectiveDevice(deviceId: String) {
+        val device = _uiState.value.familyNetwork.devices.find { it.id == deviceId } ?: return
+        _uiState.update { state ->
+            state.copy(
+                familyNetwork = state.familyNetwork.copy(currentActiveDeviceId = deviceId)
+            )
+        }
+        showMessage("Switched perspective to: ${device.name}")
+    }
+
+    fun updateFamilyGmail(newEmail: String) {
+        if (newEmail.contains("@") && newEmail.contains(".")) {
+            _uiState.update { state ->
+                val now = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+                val newAlert = FamilyAlert(
+                    id = "alt_${System.currentTimeMillis()}",
+                    timestamp = now,
+                    originDeviceId = state.familyNetwork.currentActiveDeviceId,
+                    originDeviceName = "Account Manager",
+                    title = "Gmail Linked",
+                    description = "Family network synchronized under $newEmail",
+                    isUrgent = false
+                )
+                state.copy(
+                    familyNetwork = state.familyNetwork.copy(
+                        accountEmail = newEmail,
+                        alerts = listOf(newAlert) + state.familyNetwork.alerts
+                    )
+                )
+            }
+            showMessage("Family Security Network linked with $newEmail")
+        }
+    }
+
+    fun remoteLockFamilyDevice(targetDeviceId: String) {
+        val state = _uiState.value
+        val target = state.familyNetwork.devices.find { it.id == targetDeviceId } ?: return
+        val current = state.familyNetwork.devices.find { it.id == state.familyNetwork.currentActiveDeviceId }
+        val now = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+
+        val updatedDevices = state.familyNetwork.devices.map {
+            if (it.id == targetDeviceId) it.copy(isLocked = true) else it
+        }
+
+        val alert = FamilyAlert(
+            id = "alt_${System.currentTimeMillis()}",
+            timestamp = now,
+            originDeviceId = current?.id ?: "fam_1",
+            originDeviceName = current?.name ?: "Family Node",
+            title = "Remote Lock Applied",
+            description = "${current?.name ?: "Controller"} remotely locked ${target.name}",
+            isUrgent = true
+        )
+
+        _uiState.update {
+            it.copy(
+                familyNetwork = it.familyNetwork.copy(
+                    devices = updatedDevices,
+                    alerts = listOf(alert) + it.familyNetwork.alerts
+                )
+            )
+        }
+
+        // If target is current active device, activate local lock
+        if (targetDeviceId == state.familyNetwork.currentActiveDeviceId) {
+            _uiState.update { it.copy(isSystemArmed = true) }
+        }
+
+        showMessage("Remote LOCK dispatched to ${target.name} via Family Network!")
+    }
+
+    fun remoteUnlockFamilyDevice(targetDeviceId: String) {
+        val state = _uiState.value
+        val target = state.familyNetwork.devices.find { it.id == targetDeviceId } ?: return
+        val updatedDevices = state.familyNetwork.devices.map {
+            if (it.id == targetDeviceId) it.copy(isLocked = false) else it
+        }
+
+        _uiState.update {
+            it.copy(
+                familyNetwork = it.familyNetwork.copy(devices = updatedDevices)
+            )
+        }
+        showMessage("${target.name} unlocked successfully")
+    }
+
+    fun remoteTriggerFamilySiren(targetDeviceId: String) {
+        val state = _uiState.value
+        val target = state.familyNetwork.devices.find { it.id == targetDeviceId } ?: return
+        val current = state.familyNetwork.devices.find { it.id == state.familyNetwork.currentActiveDeviceId }
+        val now = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+
+        val updatedDevices = state.familyNetwork.devices.map {
+            if (it.id == targetDeviceId) it.copy(isSirenActive = true) else it
+        }
+
+        val alert = FamilyAlert(
+            id = "alt_${System.currentTimeMillis()}",
+            timestamp = now,
+            originDeviceId = current?.id ?: "fam_1",
+            originDeviceName = current?.name ?: "Family Node",
+            title = "SIREN TRIGGERED",
+            description = "High-decibel emergency siren triggered remotely on ${target.name}",
+            isUrgent = true
+        )
+
+        _uiState.update {
+            it.copy(
+                familyNetwork = it.familyNetwork.copy(
+                    devices = updatedDevices,
+                    alerts = listOf(alert) + it.familyNetwork.alerts
+                )
+            )
+        }
+
+        // If current active device is target, sound siren
+        if (targetDeviceId == state.familyNetwork.currentActiveDeviceId) {
+            triggerGlobalSiren()
+        }
+
+        showMessage("SIREN command broadcasted to ${target.name}!")
+    }
+
+    fun remoteStopFamilySiren(targetDeviceId: String) {
+        val state = _uiState.value
+        val target = state.familyNetwork.devices.find { it.id == targetDeviceId } ?: return
+        val updatedDevices = state.familyNetwork.devices.map {
+            if (it.id == targetDeviceId) it.copy(isSirenActive = false) else it
+        }
+
+        _uiState.update {
+            it.copy(
+                familyNetwork = it.familyNetwork.copy(devices = updatedDevices)
+            )
+        }
+
+        if (targetDeviceId == state.familyNetwork.currentActiveDeviceId) {
+            stopGlobalSiren()
+        }
+
+        showMessage("Siren silenced on ${target.name}")
+    }
+
+    fun markFamilyDeviceStolen(targetDeviceId: String) {
+        val state = _uiState.value
+        val target = state.familyNetwork.devices.find { it.id == targetDeviceId } ?: return
+        val isTargetMaster = (targetDeviceId == state.familyNetwork.masterDeviceId)
+        val now = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+
+        // If target is Master phone, activate Failover:
+        // Next available online member becomes FAILOVER_GUARDIAN
+        var electedGuardianId: String? = null
+        val updatedDevices = state.familyNetwork.devices.map { dev ->
+            if (dev.id == targetDeviceId) {
+                dev.copy(isStolen = true, isLocked = true, isSirenActive = true)
+            } else if (isTargetMaster && dev.role == FamilyDeviceRole.MEMBER && electedGuardianId == null && dev.isOnline) {
+                electedGuardianId = dev.id
+                dev.copy(role = FamilyDeviceRole.FAILOVER_GUARDIAN)
+            } else dev
+        }
+
+        val guardianName = updatedDevices.find { it.id == electedGuardianId }?.name ?: "Surviving Family Phones"
+
+        val alertTitle = if (isTargetMaster) "🚨 MASTER FAILOVER ACTIVATED" else "🚨 FAMILY PHONE STOLEN"
+        val alertDesc = if (isTargetMaster) {
+            "Master phone (${target.name}) was stolen! $guardianName has automatically taken over as Guardian Controller. All 4 phones can track and lock Master."
+        } else {
+            "${target.name} has been marked STOLEN! Live GPS coordinates shared across all 4 family phones."
+        }
+
+        val alert = FamilyAlert(
+            id = "alt_${System.currentTimeMillis()}",
+            timestamp = now,
+            originDeviceId = targetDeviceId,
+            originDeviceName = target.name,
+            title = alertTitle,
+            description = alertDesc,
+            isUrgent = true
+        )
+
+        _uiState.update {
+            it.copy(
+                familyNetwork = it.familyNetwork.copy(
+                    isFailoverActive = isTargetMaster,
+                    failoverGuardianDeviceId = electedGuardianId,
+                    devices = updatedDevices,
+                    alerts = listOf(alert) + it.familyNetwork.alerts
+                )
+            )
+        }
+
+        // Send SMS to emergency number
+        val smsMessage = "🚨 FAMILY NETWORK ALERT: ${target.name} marked STOLEN! Live GPS: https://maps.google.com/?q=${target.latitude},${target.longitude}. Master Failover active."
+        SmsAlertHelper.sendSms(
+            context = getApplication(),
+            phoneNumber = target.emergencyPhone,
+            message = smsMessage,
+            onSuccess = {},
+            onError = {}
+        )
+
+        showMessage(if (isTargetMaster) "MASTER STOLEN! Failover transferred to $guardianName" else "${target.name} marked STOLEN!")
+    }
+
+    fun unmarkFamilyDeviceStolen(targetDeviceId: String) {
+        val state = _uiState.value
+        val target = state.familyNetwork.devices.find { it.id == targetDeviceId } ?: return
+        val wasMaster = (targetDeviceId == state.familyNetwork.masterDeviceId)
+        val now = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+
+        val updatedDevices = state.familyNetwork.devices.map { dev ->
+            if (dev.id == targetDeviceId) {
+                dev.copy(
+                    isStolen = false,
+                    isLocked = false,
+                    isSirenActive = false,
+                    role = if (wasMaster) FamilyDeviceRole.MASTER else FamilyDeviceRole.MEMBER
+                )
+            } else if (dev.role == FamilyDeviceRole.FAILOVER_GUARDIAN) {
+                dev.copy(role = FamilyDeviceRole.MEMBER)
+            } else dev
+        }
+
+        val alert = FamilyAlert(
+            id = "alt_${System.currentTimeMillis()}",
+            timestamp = now,
+            originDeviceId = targetDeviceId,
+            originDeviceName = target.name,
+            title = "Device Recovered",
+            description = "${target.name} has been marked RECOVERED. Normal security restored.",
+            isUrgent = false
+        )
+
+        _uiState.update {
+            it.copy(
+                familyNetwork = it.familyNetwork.copy(
+                    isFailoverActive = false,
+                    failoverGuardianDeviceId = null,
+                    devices = updatedDevices,
+                    alerts = listOf(alert) + it.familyNetwork.alerts
+                )
+            )
+        }
+
+        showMessage("${target.name} recovered! Family network restored.")
+    }
+
+    fun broadcastFamilyEmergency(title: String, description: String) {
+        val state = _uiState.value
+        val current = state.familyNetwork.devices.find { it.id == state.familyNetwork.currentActiveDeviceId }
+        val now = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+
+        val alert = FamilyAlert(
+            id = "alt_${System.currentTimeMillis()}",
+            timestamp = now,
+            originDeviceId = current?.id ?: "fam_1",
+            originDeviceName = current?.name ?: "Family Phone",
+            title = title,
+            description = description,
+            isUrgent = true
+        )
+
+        _uiState.update {
+            it.copy(
+                familyNetwork = it.familyNetwork.copy(
+                    alerts = listOf(alert) + it.familyNetwork.alerts
+                )
+            )
+        }
+        showMessage("Emergency broadcasted to all family phones!")
     }
 
     override fun onCleared() {

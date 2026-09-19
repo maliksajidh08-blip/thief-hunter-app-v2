@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Security
@@ -228,6 +229,98 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(6.dp))
 
+        // HERO CARD: FAMILY SECURITY NETWORK
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = NavyCardDark),
+            border = androidx.compose.foundation.BorderStroke(
+                1.5.dp,
+                if (state.familyNetwork.isFailoverActive) AlertRed else YellowAccent
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { viewModel.navigateTo(Screen.FAMILY_NETWORK) }
+                .testTag("home_family_network_hero")
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(if (state.familyNetwork.isFailoverActive) AlertRed else YellowAccent)
+                    ) {
+                        Icon(
+                            imageVector = if (state.familyNetwork.isFailoverActive) Icons.Default.Warning else Icons.Default.Hub,
+                            contentDescription = null,
+                            tint = NavyDark,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Family Security Network",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                color = if (state.familyNetwork.isFailoverActive) AlertRed else SafeGreen,
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = if (state.familyNetwork.isFailoverActive) "FAILOVER" else "5 PHONES",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = if (state.familyNetwork.isFailoverActive)
+                                "🚨 Master stolen! Guardian failover controlling network"
+                            else
+                                "Synced via ${state.familyNetwork.accountEmail}",
+                            fontSize = 11.sp,
+                            color = if (state.familyNetwork.isFailoverActive) AlertRed else YellowAccent,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Surface(
+                    color = Color.White.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "OPEN",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = YellowAccent,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
         Text(
             text = viewModel.tr("home_title"),
             style = MaterialTheme.typography.titleMedium,
@@ -245,6 +338,17 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(bottom = 8.dp)
         ) {
+            item {
+                HomeMenuCard(
+                    title = "Family Network",
+                    description = "5 Phones • Failover Guard",
+                    icon = Icons.Default.Hub,
+                    badgeText = "5 SYNC",
+                    badgeColor = YellowDark,
+                    testTag = "btn_family_network_grid",
+                    onClick = { viewModel.navigateTo(Screen.FAMILY_NETWORK) }
+                )
+            }
             item {
                 HomeMenuCard(
                     title = "Sensors & Alarms",

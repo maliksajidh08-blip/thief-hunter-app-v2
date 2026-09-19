@@ -318,6 +318,31 @@ fun IntruderSelfieScreen(
                         }
                     }
 
+                    // Direct test button for 3rd Wrong PIN trigger
+                    Button(
+                        onClick = {
+                            viewModel.verifyAndDisarmPin("9999")
+                            viewModel.verifyAndDisarmPin("9999")
+                            viewModel.verifyAndDisarmPin("9999")
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AlertRed,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .height(42.dp)
+                            .testTag("btn_test_wrong_pin_photo")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Simulate Wrong PIN", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+
                     if (state.intruderCaptures.isNotEmpty()) {
                         OutlinedButton(
                             onClick = { viewModel.clearIntruderCaptures() },
