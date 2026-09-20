@@ -246,6 +246,8 @@ data class UiState(
                 name = "Dad's Galaxy S24 Ultra",
                 ownerName = "Sajid (Dad)",
                 model = "Samsung Galaxy S24 Ultra",
+                phoneNumber = "+92-300-4589211",
+                imei = "358912048210341",
                 role = FamilyDeviceRole.MASTER,
                 isOnline = true,
                 batteryPct = 88,
@@ -266,6 +268,8 @@ data class UiState(
                 name = "Mom's Galaxy A54",
                 ownerName = "Mom",
                 model = "Samsung Galaxy A54 5G",
+                phoneNumber = "+92-321-8892104",
+                imei = "354728109384721",
                 role = FamilyDeviceRole.MEMBER,
                 isOnline = true,
                 batteryPct = 76,
@@ -286,6 +290,8 @@ data class UiState(
                 name = "Son's Pixel 8",
                 ownerName = "Ali (Son)",
                 model = "Google Pixel 8",
+                phoneNumber = "+92-300-1234567",
+                imei = "357891043218765",
                 role = FamilyDeviceRole.MEMBER,
                 isOnline = true,
                 batteryPct = 92,
@@ -298,7 +304,7 @@ data class UiState(
                 address = "University Campus, Garden Town",
                 lastSeenTime = "5 mins ago",
                 simNumber = "+92 333 7712345",
-                emergencyPhone = "+92 333 7712345",
+                emergencyPhone = "+92 300 1234567",
                 capturedPhotoCount = 0
             ),
             FamilyDeviceNode(
@@ -306,6 +312,8 @@ data class UiState(
                 name = "Daughter's Redmi Note 13",
                 ownerName = "Fatima (Daughter)",
                 model = "Xiaomi Redmi Note 13",
+                phoneNumber = "+92-345-9901234",
+                imei = "869402019485720",
                 role = FamilyDeviceRole.MEMBER,
                 isOnline = true,
                 batteryPct = 68,
@@ -326,6 +334,8 @@ data class UiState(
                 name = "Home Backup Galaxy S21",
                 ownerName = "Home Safe Node",
                 model = "Samsung Galaxy S21 FE",
+                phoneNumber = "+92-302-1122334",
+                imei = "359182736452819",
                 role = FamilyDeviceRole.MEMBER,
                 isOnline = true,
                 batteryPct = 99,
@@ -559,8 +569,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
                         isCameraCapturing = true
                     )
                 }
-                recordIntruderCapture("3rd Wrong PIN attempt: '$pin' - Front Camera Triggered")
-                showMessage("3rd Wrong PIN! Taking silent front camera intruder selfie...")
+                showMessage("3rd Wrong PIN! Front camera capturing intruder photo...")
             } else {
                 val remaining = 3 - newAttempts
                 recordIntruderCapture("Wrong Master PIN entered: $pin (Attempt $newAttempts/3)")
@@ -571,12 +580,13 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun onPhotoCaptured(filePath: String, isManualTest: Boolean = false) {
-        val reason = if (isManualTest) "Manual Camera Test Snapshot" else "3rd Wrong PIN Intruder Selfie"
+        val reason = if (isManualTest) "Manual Camera Test Snapshot" else "3rd Wrong Master PIN Intruder Selfie"
         recordIntruderCapture(reason, filePath)
         _uiState.update {
             it.copy(
                 isCameraCapturing = false,
-                lastCapturedPhotoPath = filePath
+                lastCapturedPhotoPath = filePath,
+                failedPinAttempts = 0
             )
         }
         showMessage(if (isManualTest) "Test photo captured and stored in Vault!" else "Intruder photo saved to Vault!")
@@ -584,7 +594,8 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
 
     fun onPhotoCaptureFailed(errorMsg: String) {
         _uiState.update { it.copy(isCameraCapturing = false) }
-        showMessage("Camera capture note: $errorMsg")
+        recordIntruderCapture("3rd Wrong PIN Attempt (Camera Note: $errorMsg)")
+        showMessage("Camera note: $errorMsg")
     }
 
     fun recordIntruderCapture(reasonText: String, photoUri: String? = null) {
@@ -597,8 +608,72 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
             wasPinWrong = true
         )
         _uiState.update {
-            it.copy(intruderCaptures = listOf(newCapture) + it.intruderCaptures)
+            it.copy(
+                intruderCaptures = listOf(newCapture) + it.intruderCaptures,
+                lastCapturedPhotoPath = photoUri ?: it.lastCapturedPhotoPath
+            )
         }
+    }
+
+    fun deleteIntruderCapture(id: String) {
+        val target = _uiState.value.intruderCaptures.find { it.id == id }
+        target?.photoUri?.let { path ->
+            try {
+                val file = java.io.File(path)
+                if (file.exists()) file.delete()
+            } catch (_: Exception) {}
+        }
+        _uiState.update { state ->
+            val updated = state.intruderCaptures.filterNot { it.id == id }
+            val newLatest = updated.firstOrNull { it.photoUri != null }?.photoUri
+            state.copy(
+                intruderCaptures = updated,
+                lastCapturedPhotoPath = newLatest
+            )
+        }
+        showMessage("Photo entry deleted from Vault")
+    }
+
+    fun updateFamilyDevicePhone(deviceId: String, newPhone: String) {
+        _uiState.update { state ->
+            val updatedList = state.familyNetwork.devices.map { dev ->
+                if (dev.id == deviceId) dev.copy(phoneNumber = newPhone, emergencyPhone = newPhone)
+                else dev
+            }
+            state.copy(familyNetwork = state.familyNetwork.copy(devices = updatedList))
+        }
+        showMessage("Device phone number updated to $newPhone")
+    }
+
+    fun addFamilyDevice(name: String, ownerName: String, model: String, phoneNumber: String, imei: String) {
+        val newId = "fam_${System.currentTimeMillis() % 10000}"
+        val newDevice = FamilyDeviceNode(
+            id = newId,
+            name = name,
+            ownerName = ownerName,
+            model = model,
+            phoneNumber = phoneNumber,
+            imei = imei,
+            role = FamilyDeviceRole.MEMBER,
+            isOnline = true,
+            batteryPct = 95,
+            isArmed = true,
+            isStolen = false,
+            isLocked = false,
+            isSirenActive = false,
+            latitude = 31.5204 + (Math.random() - 0.5) * 0.02,
+            longitude = 74.3587 + (Math.random() - 0.5) * 0.02,
+            address = "Registered Device Location",
+            lastSeenTime = "Active now",
+            simNumber = phoneNumber,
+            emergencyPhone = phoneNumber,
+            capturedPhotoCount = 0
+        )
+        _uiState.update { state ->
+            val updatedDevices = state.familyNetwork.devices + newDevice
+            state.copy(familyNetwork = state.familyNetwork.copy(devices = updatedDevices))
+        }
+        showMessage("Device '$name' registered into Family Network!")
     }
 
     fun clearIntruderCaptures() {

@@ -72,6 +72,7 @@ import com.example.data.AppLanguage
 import com.example.data.Screen
 import com.example.security.CameraCaptureHelper
 import com.example.ui.CommunityScreen
+import com.example.ui.DeviceRegistrationScreen
 import com.example.ui.FamilyNetworkScreen
 import com.example.ui.HomeScreen
 import com.example.ui.IntruderSelfieScreen
@@ -329,6 +330,7 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
                     Screen.SPLASH -> SplashScreen(viewModel = viewModel)
                     Screen.HOME -> HomeScreen(viewModel = viewModel)
                     Screen.FAMILY_NETWORK -> FamilyNetworkScreen(viewModel = viewModel)
+                    Screen.DEVICE_REGISTRATION -> DeviceRegistrationScreen(viewModel = viewModel)
                     Screen.SENSORS_HUB -> SensorsHubScreen(viewModel = viewModel)
                     Screen.INTRUDER_SELFIE -> IntruderSelfieScreen(viewModel = viewModel)
                     Screen.MY_MOBILES -> MyMobilesScreen(viewModel = viewModel)

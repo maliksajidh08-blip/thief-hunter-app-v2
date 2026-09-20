@@ -95,6 +95,8 @@ data class FamilyDeviceNode(
     val name: String,
     val ownerName: String,
     val model: String,
+    val phoneNumber: String = "+92-300-1234567",
+    val imei: String = "357891043218765",
     val role: FamilyDeviceRole = FamilyDeviceRole.MEMBER,
     val isOnline: Boolean = true,
     val batteryPct: Int = 85,
@@ -144,6 +146,7 @@ enum class Screen(val titleKey: String) {
     COMMUNITY("community"),
     REPORT_THEFT("report_theft"),
     INTRUDER_SELFIE("intruder_selfie"),
+    DEVICE_REGISTRATION("register_device"),
     SETTINGS("settings")
 }
 

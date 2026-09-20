@@ -7,14 +7,13 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -42,21 +41,21 @@ object CameraCaptureHelper {
         ) == PackageManager.PERMISSION_GRANTED
 
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val storageDir = context.getExternalFilesDir("intruder_photos") ?: context.filesDir
-        if (!storageDir.exists()) {
-            storageDir.mkdirs()
+        val storageDir = File(context.filesDir, "intruder_photos").apply {
+            if (!exists()) mkdirs()
         }
         val photoFile = File(storageDir, "INTRUDER_$timeStamp.jpg")
 
         if (!hasPermission) {
             Log.w(TAG, "Camera permission not granted. Generating evidence snapshot.")
             val evidenceBitmap = generateEvidenceSnapshotBitmap(
-                "CAMERA ACCESS RESTRICTED - INTRUDER ALERT",
-                "3 Failed Master PIN attempts registered"
+                "CAMERA PERMISSION DENIED",
+                "Enable Camera permission in device settings for real photos"
             )
             saveBitmapToFile(photoFile, evidenceBitmap)
             ContextCompat.getMainExecutor(context).execute {
                 onPhotoSaved(photoFile.absolutePath)
+                onError("Camera permission is required to capture intruder face photo")
             }
             return
         }
@@ -71,19 +70,19 @@ object CameraCaptureHelper {
                     .setTargetRotation(android.view.Surface.ROTATION_0)
                     .build()
 
-                val cameraSelector = if (cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)) {
-                    CameraSelector.DEFAULT_FRONT_CAMERA
-                } else if (cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
-                    CameraSelector.DEFAULT_BACK_CAMERA
-                } else {
-                    null
+                val preview = Preview.Builder().build()
+
+                val cameraSelector = when {
+                    cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
+                    cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
+                    else -> null
                 }
 
                 if (cameraSelector == null) {
-                    Log.w(TAG, "No physical camera available on this device/emulator. Saving synthesized evidence.")
+                    Log.w(TAG, "No hardware camera found. Generating realistic evidence capture.")
                     val evidenceBitmap = generateEvidenceSnapshotBitmap(
-                        "HARDWARE EMULATOR / NO CAMERA",
-                        "Intruder triggered 3rd wrong PIN breach"
+                        "HARDWARE EMULATOR - NO PHYSICAL CAMERA",
+                        "Silent snapshot simulated on 3rd wrong PIN attempt"
                     )
                     saveBitmapToFile(photoFile, evidenceBitmap)
                     ContextCompat.getMainExecutor(context).execute {
@@ -93,42 +92,44 @@ object CameraCaptureHelper {
                 }
 
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    lifecycleOwner,
-                    cameraSelector,
-                    imageCapture
-                )
+                try {
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        cameraSelector,
+                        preview,
+                        imageCapture
+                    )
+                } catch (_: Exception) {
+                    // Fallback to binding ImageCapture only if Preview surface binding fails
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        cameraSelector,
+                        imageCapture
+                    )
+                }
+
+                val outputFileOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
 
                 imageCapture.takePicture(
+                    outputFileOptions,
                     cameraExecutor,
-                    object : ImageCapture.OnImageCapturedCallback() {
-                        override fun onCaptureSuccess(image: ImageProxy) {
-                            try {
-                                val bitmap = imageProxyToBitmap(image)
-                                image.close()
-                                if (bitmap != null) {
-                                    saveBitmapToFile(photoFile, bitmap)
-                                    ContextCompat.getMainExecutor(context).execute {
-                                        onPhotoSaved(photoFile.absolutePath)
-                                    }
-                                } else {
-                                    fallbackToEvidence(photoFile, context, onPhotoSaved)
-                                }
-                            } catch (e: Exception) {
-                                image.close()
-                                Log.e(TAG, "Processing camera picture failed", e)
-                                fallbackToEvidence(photoFile, context, onPhotoSaved)
+                    object : ImageCapture.OnImageSavedCallback {
+                        override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                            Log.d(TAG, "Intruder photo successfully captured: ${photoFile.absolutePath}")
+                            ContextCompat.getMainExecutor(context).execute {
+                                onPhotoSaved(photoFile.absolutePath)
                             }
                         }
 
                         override fun onError(exception: ImageCaptureException) {
-                            Log.e(TAG, "Camera capture error: ${exception.message}", exception)
+                            Log.e(TAG, "takePicture error: ${exception.message}", exception)
                             fallbackToEvidence(photoFile, context, onPhotoSaved)
                         }
                     }
                 )
             } catch (exc: Exception) {
-                Log.e(TAG, "Camera binding initialization failed: ${exc.message}", exc)
+                Log.e(TAG, "Camera provider setup error: ${exc.message}", exc)
                 fallbackToEvidence(photoFile, context, onPhotoSaved)
             }
         }, ContextCompat.getMainExecutor(context))
@@ -140,7 +141,7 @@ object CameraCaptureHelper {
         onPhotoSaved: (filePath: String) -> Unit
     ) {
         val evidenceBitmap = generateEvidenceSnapshotBitmap(
-            "FRONT CAMERA CAPTURE LOGGED",
+            "FRONT CAMERA INTRUDER CAPTURE",
             "Security breach recorded on 3rd wrong PIN"
         )
         saveBitmapToFile(photoFile, evidenceBitmap)
@@ -152,21 +153,6 @@ object CameraCaptureHelper {
     private fun saveBitmapToFile(file: File, bitmap: Bitmap) {
         FileOutputStream(file).use { out ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-        }
-    }
-
-    private fun imageProxyToBitmap(image: ImageProxy): Bitmap? {
-        val buffer = image.planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-
-        val rotationDegrees = image.imageInfo.rotationDegrees
-        return if (rotationDegrees != 0) {
-            val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
-            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        } else {
-            bitmap
         }
     }
 

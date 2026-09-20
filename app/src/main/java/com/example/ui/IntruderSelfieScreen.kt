@@ -1,8 +1,8 @@
 package com.example.ui
 
-import android.graphics.Bitmap
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.launch
@@ -61,12 +61,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import coil.compose.AsyncImage
 import com.example.security.CameraCaptureHelper
 import com.example.ui.theme.AlertRed
 import com.example.ui.theme.NavyDark
@@ -85,9 +87,34 @@ fun IntruderSelfieScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var selectedPreviewPhotoPath by remember { mutableStateOf<String?>(null) }
+    var selectedCaptureId by remember { mutableStateOf<String?>(null) }
     var isTestingCamera by remember { mutableStateOf(false) }
 
-    // Backup system camera launcher if CameraX fails or user prefers system camera preview
+    // Runtime CAMERA permission launcher
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.showMessage("Camera permission granted. Triggering front camera...")
+            isTestingCamera = true
+            CameraCaptureHelper.takeFrontCameraPhotoSilent(
+                context = context,
+                lifecycleOwner = lifecycleOwner,
+                onPhotoSaved = { savedPath ->
+                    isTestingCamera = false
+                    viewModel.onPhotoCaptured(savedPath, isManualTest = true)
+                },
+                onError = { err ->
+                    isTestingCamera = false
+                    viewModel.onPhotoCaptureFailed(err)
+                }
+            )
+        } else {
+            viewModel.showMessage("Camera permission denied. Front camera photos require Camera access.")
+        }
+    }
+
+    // System camera preview fallback
     val cameraPreviewLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
     ) { bmp ->
@@ -122,11 +149,12 @@ fun IntruderSelfieScreen(
     // Full screen / Enlarged photo preview dialog
     selectedPreviewPhotoPath?.let { photoPath ->
         val file = File(photoPath)
-        val bmp = remember(photoPath) {
-            if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
-        }
+        val fileExists = file.exists()
 
-        Dialog(onDismissRequest = { selectedPreviewPhotoPath = null }) {
+        Dialog(onDismissRequest = {
+            selectedPreviewPhotoPath = null
+            selectedCaptureId = null
+        }) {
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = NavyDark),
@@ -144,12 +172,15 @@ fun IntruderSelfieScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Intruder Snapshot Preview",
+                            text = "Intruder Evidence Photo",
                             fontWeight = FontWeight.Bold,
                             color = YellowAccent,
                             fontSize = 15.sp
                         )
-                        IconButton(onClick = { selectedPreviewPhotoPath = null }) {
+                        IconButton(onClick = {
+                            selectedPreviewPhotoPath = null
+                            selectedCaptureId = null
+                        }) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Close",
@@ -160,9 +191,9 @@ fun IntruderSelfieScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    if (bmp != null) {
-                        Image(
-                            bitmap = bmp.asImageBitmap(),
+                    if (fileExists) {
+                        AsyncImage(
+                            model = file,
                             contentDescription = "Full Intruder Preview",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
@@ -186,17 +217,54 @@ fun IntruderSelfieScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Saved at: ${file.name}",
+                        text = "File: ${file.name}",
                         fontSize = 11.sp,
                         color = Color.LightGray
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = { selectedPreviewPhotoPath = null },
-                        colors = ButtonDefaults.buttonColors(containerColor = YellowAccent, contentColor = NavyDark),
-                        modifier = Modifier.fillMaxWidth()
+                    Text(
+                        text = "Path: ${file.parentFile?.name}/${file.name}",
+                        fontSize = 10.sp,
+                        color = Color.Gray
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Dismiss", fontWeight = FontWeight.Bold)
+                        selectedCaptureId?.let { capId ->
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.deleteIntruderCapture(capId)
+                                    selectedPreviewPhotoPath = null
+                                    selectedCaptureId = null
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = AlertRed),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Delete", fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                selectedPreviewPhotoPath = null
+                                selectedCaptureId = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = YellowAccent, contentColor = NavyDark),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Close", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -255,7 +323,7 @@ fun IntruderSelfieScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = "If an unauthorized user enters the wrong master PIN 3 times, the front camera automatically snaps a silent photo, saves it into secure app storage, and logs timestamp & GPS coordinates.",
+                    text = "If an unauthorized user enters the wrong master PIN 3 times, the front camera automatically snaps a silent photo, saves it as a real JPG into intruder_photos/ folder, and logs timestamp & GPS coordinates.",
                     fontSize = 12.sp,
                     color = Color.White.copy(alpha = 0.85f),
                     lineHeight = 16.sp
@@ -269,25 +337,32 @@ fun IntruderSelfieScreen(
                 ) {
                     Button(
                         onClick = {
-                            isTestingCamera = true
-                            // Try silent front camera first; fallback to camera preview if not available
-                            CameraCaptureHelper.takeFrontCameraPhotoSilent(
-                                context = context,
-                                lifecycleOwner = lifecycleOwner,
-                                onPhotoSaved = { savedPath ->
-                                    isTestingCamera = false
-                                    viewModel.onPhotoCaptured(savedPath, isManualTest = true)
-                                },
-                                onError = { _ ->
-                                    // Fallback to TakePicturePreview activity contract
-                                    try {
-                                        cameraPreviewLauncher.launch()
-                                    } catch (_: Exception) {
+                            val hasPermission = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.CAMERA
+                            ) == PackageManager.PERMISSION_GRANTED
+
+                            if (!hasPermission) {
+                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            } else {
+                                isTestingCamera = true
+                                CameraCaptureHelper.takeFrontCameraPhotoSilent(
+                                    context = context,
+                                    lifecycleOwner = lifecycleOwner,
+                                    onPhotoSaved = { savedPath ->
                                         isTestingCamera = false
-                                        viewModel.showMessage("Camera preview unavailable")
+                                        viewModel.onPhotoCaptured(savedPath, isManualTest = true)
+                                    },
+                                    onError = { _ ->
+                                        try {
+                                            cameraPreviewLauncher.launch()
+                                        } catch (_: Exception) {
+                                            isTestingCamera = false
+                                            viewModel.showMessage("Camera preview unavailable")
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = YellowAccent,
@@ -353,7 +428,7 @@ fun IntruderSelfieScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
-                                contentDescription = "Clear",
+                                contentDescription = "Clear All",
                                 tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -369,10 +444,6 @@ fun IntruderSelfieScreen(
         state.lastCapturedPhotoPath?.let { photoPath ->
             val photoFile = File(photoPath)
             if (photoFile.exists()) {
-                val latestBmp = remember(photoPath) {
-                    BitmapFactory.decodeFile(photoFile.absolutePath)
-                }
-
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -380,37 +451,24 @@ fun IntruderSelfieScreen(
                         .fillMaxWidth()
                         .padding(bottom = 12.dp)
                         .border(1.5.dp, AlertRed, RoundedCornerShape(16.dp))
-                        .clickable { selectedPreviewPhotoPath = photoPath }
+                        .clickable {
+                            selectedPreviewPhotoPath = photoPath
+                            selectedCaptureId = state.intruderCaptures.firstOrNull { it.photoUri == photoPath }?.id
+                        }
                 ) {
                     Row(
                         modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (latestBmp != null) {
-                            Image(
-                                bitmap = latestBmp.asImageBitmap(),
-                                contentDescription = "Captured Intruder Selfie",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .border(1.dp, AlertRed, RoundedCornerShape(12.dp))
-                            )
-                        } else {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(AlertRed.copy(alpha = 0.2f))
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Image,
-                                    contentDescription = null,
-                                    tint = AlertRed
-                                )
-                            }
-                        }
+                        AsyncImage(
+                            model = photoFile,
+                            contentDescription = "Captured Intruder Selfie",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, AlertRed, RoundedCornerShape(12.dp))
+                        )
 
                         Spacer(modifier = Modifier.width(12.dp))
 
@@ -438,7 +496,7 @@ fun IntruderSelfieScreen(
                             }
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Captured by Front Camera. Tap to enlarge preview.",
+                                text = "Real photo saved to ${photoFile.name}. Tap to enlarge.",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -508,11 +566,7 @@ fun IntruderSelfieScreen(
             ) {
                 items(state.intruderCaptures) { item ->
                     val photoFile = item.photoUri?.let { File(it) }
-                    val itemBmp = remember(item.photoUri) {
-                        if (photoFile != null && photoFile.exists()) {
-                            BitmapFactory.decodeFile(photoFile.absolutePath)
-                        } else null
-                    }
+                    val hasPhoto = photoFile != null && photoFile.exists()
 
                     Card(
                         shape = RoundedCornerShape(14.dp),
@@ -525,8 +579,11 @@ fun IntruderSelfieScreen(
                                 MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                                 RoundedCornerShape(14.dp)
                             )
-                            .clickable(enabled = item.photoUri != null) {
-                                item.photoUri?.let { selectedPreviewPhotoPath = it }
+                            .clickable(enabled = hasPhoto) {
+                                item.photoUri?.let {
+                                    selectedPreviewPhotoPath = it
+                                    selectedCaptureId = item.id
+                                }
                             }
                     ) {
                         Row(
@@ -535,13 +592,13 @@ fun IntruderSelfieScreen(
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (itemBmp != null) {
-                                Image(
-                                    bitmap = itemBmp.asImageBitmap(),
+                            if (hasPhoto && photoFile != null) {
+                                AsyncImage(
+                                    model = photoFile,
                                     contentDescription = "Intruder Photo",
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
-                                        .size(48.dp)
+                                        .size(52.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                         .border(1.dp, AlertRed, RoundedCornerShape(8.dp))
                                 )
@@ -549,7 +606,7 @@ fun IntruderSelfieScreen(
                                 Box(
                                     contentAlignment = Alignment.Center,
                                     modifier = Modifier
-                                        .size(44.dp)
+                                        .size(52.dp)
                                         .clip(CircleShape)
                                         .background(AlertRed.copy(alpha = 0.12f))
                                 ) {
@@ -576,9 +633,9 @@ fun IntruderSelfieScreen(
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (item.photoUri != null) {
+                                if (hasPhoto) {
                                     Text(
-                                        text = "Photo stored • Tap to view preview",
+                                        text = "Real photo captured • Tap to view",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = SafeGreen
@@ -586,16 +643,15 @@ fun IntruderSelfieScreen(
                                 }
                             }
 
-                            Surface(
-                                color = AlertRed.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(6.dp)
+                            IconButton(
+                                onClick = { viewModel.deleteIntruderCapture(item.id) },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                Text(
-                                    text = if (item.photoUri != null) "PHOTO" else "LOGGED",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = AlertRed,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete entry",
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }

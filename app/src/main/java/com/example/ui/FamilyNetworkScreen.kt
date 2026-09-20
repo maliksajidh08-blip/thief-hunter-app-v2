@@ -32,14 +32,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Refresh
@@ -116,6 +120,16 @@ fun FamilyNetworkScreen(
     var showBroadcastDialog by remember { mutableStateOf(false) }
     var broadcastTitle by remember { mutableStateOf("") }
     var broadcastDesc by remember { mutableStateOf("") }
+
+    var showRegisterDialog by remember { mutableStateOf(false) }
+    var regName by remember { mutableStateOf("") }
+    var regOwner by remember { mutableStateOf("") }
+    var regModel by remember { mutableStateOf("") }
+    var regPhone by remember { mutableStateOf("+92-300-1234567") }
+    var regImei by remember { mutableStateOf("357891043218765") }
+
+    var editingDeviceId by remember { mutableStateOf<String?>(null) }
+    var editingPhoneInput by remember { mutableStateOf("") }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulseFailover")
     val failoverGlowColor by infiniteTransition.animateColor(
@@ -360,6 +374,7 @@ fun FamilyNetworkScreen(
                 devices = family.devices,
                 currentActiveId = family.currentActiveDeviceId,
                 masterId = family.masterDeviceId,
+                accountEmail = family.accountEmail,
                 isFailover = family.isFailoverActive,
                 onRemoteLock = { viewModel.remoteLockFamilyDevice(it) },
                 onRemoteUnlock = { viewModel.remoteUnlockFamilyDevice(it) },
@@ -377,6 +392,13 @@ fun FamilyNetworkScreen(
                     } catch (_: Exception) {
                         viewModel.navigateTo(Screen.LIVE_TRACKING)
                     }
+                },
+                onEditPhoneClick = { devId, currentPhone ->
+                    editingDeviceId = devId
+                    editingPhoneInput = currentPhone
+                },
+                onRegisterDeviceClick = {
+                    showRegisterDialog = true
                 }
             )
             1 -> SmartPocketSensorTab(viewModel = viewModel)
@@ -479,6 +501,131 @@ fun FamilyNetworkScreen(
             }
         )
     }
+
+    // DIALOG: REGISTER NEW FAMILY DEVICE
+    if (showRegisterDialog) {
+        AlertDialog(
+            onDismissRequest = { showRegisterDialog = false },
+            title = {
+                Text("Register Family Device", fontWeight = FontWeight.Bold, color = YellowAccent)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Add another device to your Family Security Network under ${family.accountEmail}.",
+                        fontSize = 12.sp,
+                        color = Color.LightGray
+                    )
+                    OutlinedTextField(
+                        value = regName,
+                        onValueChange = { regName = it },
+                        label = { Text("Device Name (e.g. Son's Pixel 8)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = regOwner,
+                        onValueChange = { regOwner = it },
+                        label = { Text("Owner Name (e.g. Ali (Son))") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = regModel,
+                        onValueChange = { regModel = it },
+                        label = { Text("Device Model (e.g. Google Pixel 8)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = regPhone,
+                        onValueChange = { regPhone = it },
+                        label = { Text("Phone Number") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = regImei,
+                        onValueChange = { regImei = it },
+                        label = { Text("IMEI (15 Digits)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (regName.isNotBlank() && regOwner.isNotBlank()) {
+                            viewModel.addFamilyDevice(
+                                name = regName.trim(),
+                                ownerName = regOwner.trim(),
+                                model = if (regModel.isBlank()) "Android Smartphone" else regModel.trim(),
+                                phoneNumber = regPhone.trim(),
+                                imei = regImei.trim()
+                            )
+                            showRegisterDialog = false
+                            regName = ""
+                            regOwner = ""
+                            regModel = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = YellowAccent, contentColor = NavyDark)
+                ) {
+                    Text("Register Phone", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRegisterDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // DIALOG: EDIT PHONE NUMBER
+    editingDeviceId?.let { devId ->
+        AlertDialog(
+            onDismissRequest = { editingDeviceId = null },
+            title = {
+                Text("Edit Emergency Phone Number", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Used for emergency broadcast alerts and remote SMS coordination.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = editingPhoneInput,
+                        onValueChange = { editingPhoneInput = it },
+                        label = { Text("Phone Number") },
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = SafeGreen) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.updateFamilyDevicePhone(devId, editingPhoneInput)
+                        editingDeviceId = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = YellowAccent, contentColor = NavyDark)
+                ) {
+                    Text("Save", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingDeviceId = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -486,6 +633,7 @@ fun FamilyDevicesTab(
     devices: List<FamilyDeviceNode>,
     currentActiveId: String,
     masterId: String,
+    accountEmail: String,
     isFailover: Boolean,
     onRemoteLock: (String) -> Unit,
     onRemoteUnlock: (String) -> Unit,
@@ -494,13 +642,53 @@ fun FamilyDevicesTab(
     onMarkStolen: (String) -> Unit,
     onUnmarkStolen: (String) -> Unit,
     onViewVault: () -> Unit,
-    onOpenMap: (Double, Double) -> Unit
+    onOpenMap: (Double, Double) -> Unit,
+    onEditPhoneClick: (String, String) -> Unit,
+    onRegisterDeviceClick: () -> Unit
 ) {
+    val context = LocalContext.current
+
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize()
     ) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Connected Family Devices (${devices.size})",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "All linked via $accountEmail",
+                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                }
+                Button(
+                    onClick = onRegisterDeviceClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = YellowAccent,
+                        contentColor = NavyDark
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("btn_register_device")
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Add Device", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+        }
+
         items(devices, key = { it.id }) { dev ->
             val isCurrentPerspective = (dev.id == currentActiveId)
             val isMaster = (dev.id == masterId)
@@ -598,6 +786,107 @@ fun FamilyDevicesTab(
                                 color = if (dev.role == FamilyDeviceRole.MASTER && !dev.isStolen) NavyDark else Color.White,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                             )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // PHONE NUMBER & IMEI
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        // Phone Number Row (Editable)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clickable { onEditPhoneClick(dev.id, dev.phoneNumber) }
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Phone,
+                                    contentDescription = "Phone",
+                                    tint = SafeGreen,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = dev.phoneNumber,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit Phone",
+                                    tint = Color.White.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${dev.phoneNumber}"))
+                                        dialIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        context.startActivity(dialIntent)
+                                    } catch (_: Exception) {}
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Call,
+                                    contentDescription = "Call Device",
+                                    tint = SafeGreen,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // IMEI Row
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Fingerprint,
+                                    contentDescription = "IMEI",
+                                    tint = YellowAccent,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "IMEI: ${dev.imei}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White.copy(alpha = 0.85f)
+                                )
+                            }
+
+                            Surface(
+                                color = Color.White.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "TRACKING ID",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = YellowAccent,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
 
