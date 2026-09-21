@@ -137,6 +137,7 @@ data class FamilyNetworkState(
 
 enum class Screen(val titleKey: String) {
     SPLASH("app_name"),
+    LOGIN("login"),
     HOME("home_title"),
     FAMILY_NETWORK("family_network"),
     SENSORS_HUB("sensors_hub"),

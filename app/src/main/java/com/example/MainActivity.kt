@@ -77,6 +77,7 @@ import com.example.ui.FamilyNetworkScreen
 import com.example.ui.HomeScreen
 import com.example.ui.IntruderSelfieScreen
 import com.example.ui.LiveTrackingScreen
+import com.example.ui.LoginScreen
 import com.example.ui.MyMobilesScreen
 import com.example.ui.ReportTheftScreen
 import com.example.ui.SensorsHubScreen
@@ -146,7 +147,7 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
     }
 
     // Handle back button
-    BackHandler(enabled = state.currentScreen != Screen.HOME && state.currentScreen != Screen.SPLASH) {
+    BackHandler(enabled = state.currentScreen != Screen.HOME && state.currentScreen != Screen.SPLASH && state.currentScreen != Screen.LOGIN) {
         viewModel.navigateTo(Screen.HOME)
     }
 
@@ -174,11 +175,18 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
         }
     }
 
+    // Force Login if not logged in and not on Splash
+    LaunchedEffect(state.isLoggedIn, state.currentScreen) {
+        if (state.currentScreen != Screen.SPLASH && state.currentScreen != Screen.LOGIN && !state.isLoggedIn) {
+            viewModel.navigateTo(Screen.LOGIN)
+        }
+    }
+
     CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                if (state.currentScreen != Screen.SPLASH) {
+                if (state.currentScreen != Screen.SPLASH && state.currentScreen != Screen.LOGIN) {
                     TopAppBar(
                         title = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -218,7 +226,7 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
                             }
                         },
                         navigationIcon = {
-                            if (state.currentScreen != Screen.HOME) {
+                            if (state.currentScreen != Screen.HOME && state.currentScreen != Screen.LOGIN) {
                                 IconButton(
                                     onClick = { viewModel.navigateTo(Screen.HOME) },
                                     modifier = Modifier.testTag("btn_back")
@@ -328,6 +336,7 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
             ) { targetScreen ->
                 when (targetScreen) {
                     Screen.SPLASH -> SplashScreen(viewModel = viewModel)
+                    Screen.LOGIN -> LoginScreen(viewModel = viewModel)
                     Screen.HOME -> HomeScreen(viewModel = viewModel)
                     Screen.FAMILY_NETWORK -> FamilyNetworkScreen(viewModel = viewModel)
                     Screen.DEVICE_REGISTRATION -> DeviceRegistrationScreen(viewModel = viewModel)

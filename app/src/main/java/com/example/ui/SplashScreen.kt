@@ -22,14 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,7 +33,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -61,18 +53,22 @@ fun SplashScreen(
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.95f,
-        targetValue = 1.12f,
+        targetValue = 1.10f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
+            animation = tween(1000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulseScale"
     )
 
-    // Optional auto-enter after 2.5 seconds
+    // 2-second splash screen, checks if user is logged in
     LaunchedEffect(Unit) {
-        delay(2500)
-        viewModel.navigateTo(Screen.HOME)
+        delay(2000)
+        if (viewModel.isUserLoggedIn()) {
+            viewModel.navigateTo(Screen.HOME)
+        } else {
+            viewModel.navigateTo(Screen.LOGIN)
+        }
     }
 
     Box(
@@ -132,7 +128,7 @@ fun SplashScreen(
             Spacer(modifier = Modifier.height(28.dp))
 
             Text(
-                text = viewModel.tr("app_name"),
+                text = "Thief Hunter",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = YellowAccent,
@@ -143,9 +139,10 @@ fun SplashScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = viewModel.tr("tagline"),
+                text = "AI Anti-Theft Protection",
                 fontSize = 15.sp,
-                color = Color.White.copy(alpha = 0.85f),
+                fontWeight = FontWeight.Bold,
+                color = Color.White.copy(alpha = 0.9f),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
@@ -156,54 +153,19 @@ fun SplashScreen(
                 color = YellowAccent,
                 trackColor = Color.White.copy(alpha = 0.15f),
                 modifier = Modifier
-                    .fillMaxWidth(0.6f)
+                    .fillMaxWidth(0.55f)
                     .height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = viewModel.tr("splash_loading"),
+                text = "Loading...",
                 fontSize = 13.sp,
                 color = YellowAccent.copy(alpha = 0.9f),
                 fontWeight = FontWeight.Medium
             )
-
-            Spacer(modifier = Modifier.height(48.dp))
-
-            Button(
-                onClick = { viewModel.navigateTo(Screen.HOME) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = YellowAccent,
-                    contentColor = NavyDark
-                ),
-                shape = RoundedCornerShape(28.dp),
-                modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .height(54.dp)
-                    .testTag("enter_dashboard_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Shield,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = NavyDark
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(
-                    text = viewModel.tr("enter_app"),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Icon(
-                    imageVector = Icons.Default.ArrowForward,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = NavyDark
-                )
-            }
         }
     }
 }

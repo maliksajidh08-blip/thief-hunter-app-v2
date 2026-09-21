@@ -9,6 +9,7 @@ import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppLanguage
+import com.example.data.AppPreferences
 import com.example.data.CommunityAlert
 import com.example.data.FamilyAlert
 import com.example.data.FamilyDeviceNode
@@ -44,6 +45,10 @@ import java.util.Locale
 
 data class UiState(
     val currentScreen: Screen = Screen.SPLASH,
+    val userEmail: String? = null,
+    val userDisplayName: String = "User",
+    val userPhotoUrl: String? = null,
+    val isLoggedIn: Boolean = false,
     val selectedLanguage: AppLanguage = AppLanguage.ENGLISH,
     val guardConfig: GuardConfig = GuardConfig(),
     val sensorTelemetry: SensorTelemetry = SensorTelemetry(),
@@ -396,6 +401,23 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     init {
+        val app = getApplication<Application>()
+        val savedEmail = AppPreferences.getUserEmail(app)
+        val isUserLogged = AppPreferences.isLoggedIn(app)
+        val displayName = AppPreferences.getUserDisplayName(app)
+        val photoUrl = AppPreferences.getUserPhotoUrl(app)
+        _uiState.update {
+            it.copy(
+                userEmail = savedEmail,
+                isLoggedIn = isUserLogged,
+                userDisplayName = displayName,
+                userPhotoUrl = photoUrl,
+                familyNetwork = it.familyNetwork.copy(
+                    accountEmail = savedEmail ?: it.familyNetwork.accountEmail
+                )
+            )
+        }
+
         // Collect telemetry from local sensor manager
         viewModelScope.launch {
             localSensorManager.telemetry.collect { tele ->
@@ -689,6 +711,44 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
 
     fun updateConfig(update: (GuardConfig) -> GuardConfig) {
         _uiState.update { it.copy(guardConfig = update(it.guardConfig)) }
+    }
+
+    fun isUserLoggedIn(): Boolean {
+        return AppPreferences.isLoggedIn(getApplication())
+    }
+
+    fun loginWithGoogle(email: String, displayName: String? = null, photoUrl: String? = null) {
+        val app = getApplication<Application>()
+        AppPreferences.setUserEmail(app, email)
+        if (displayName != null) AppPreferences.setUserDisplayName(app, displayName)
+        if (photoUrl != null) AppPreferences.setUserPhotoUrl(app, photoUrl)
+
+        _uiState.update {
+            it.copy(
+                userEmail = email,
+                userDisplayName = displayName ?: it.userDisplayName,
+                userPhotoUrl = photoUrl ?: it.userPhotoUrl,
+                isLoggedIn = true,
+                familyNetwork = it.familyNetwork.copy(accountEmail = email),
+                currentScreen = Screen.HOME
+            )
+        }
+        showMessage("Signed in successfully as $email")
+    }
+
+    fun logout() {
+        val app = getApplication<Application>()
+        AppPreferences.clearUserSession(app)
+        _uiState.update {
+            it.copy(
+                userEmail = null,
+                userDisplayName = "User",
+                userPhotoUrl = null,
+                isLoggedIn = false,
+                currentScreen = Screen.LOGIN
+            )
+        }
+        showMessage("Logged out successfully.")
     }
 
     fun navigateTo(screen: Screen) {
