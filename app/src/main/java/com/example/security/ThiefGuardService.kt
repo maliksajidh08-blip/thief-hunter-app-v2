@@ -27,6 +27,8 @@ class ThiefGuardService : Service() {
         private set
     lateinit var notificationHelper: SecurityNotificationHelper
         private set
+    lateinit var locationTracker: OfflineLocationTrackerEngine
+        private set
 
     private var telemetryCollectJob: Job? = null
 
@@ -42,6 +44,7 @@ class ThiefGuardService : Service() {
         sensorManager = SensorSecurityManager(this)
         sirenEngine = AlarmSirenEngine(this)
         notificationHelper = SecurityNotificationHelper(this)
+        locationTracker = OfflineLocationTrackerEngine(this, scope)
 
         sensorManager.onTriggerAlarm = { reason ->
             sirenEngine.startSiren(reason.patternKey)
@@ -49,6 +52,7 @@ class ThiefGuardService : Service() {
                 reason.title,
                 "Security perimeter breached: ${reason.title} at ${System.currentTimeMillis()}"
             )
+            locationTracker.setDeviceStolen(true)
         }
 
         // Start Foreground Service notification immediately
@@ -101,6 +105,7 @@ class ThiefGuardService : Service() {
 
     override fun onDestroy() {
         telemetryCollectJob?.cancel()
+        locationTracker.stopTracking()
         sensorManager.onDestroy()
         sirenEngine.stopSiren()
         super.onDestroy()

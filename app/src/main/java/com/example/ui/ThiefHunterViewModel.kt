@@ -8,6 +8,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.AppDatabase
 import com.example.data.AppLanguage
 import com.example.data.AppPreferences
 import com.example.data.CommunityAlert
@@ -18,6 +19,7 @@ import com.example.data.FamilyNetworkState
 import com.example.data.IntruderCapture
 import com.example.data.LiveTrackerState
 import com.example.data.Localization
+import com.example.data.LocationHistoryEntity
 import com.example.data.MobileDevice
 import com.example.data.ReportStatus
 import com.example.data.Screen
@@ -25,6 +27,7 @@ import com.example.data.StolenReport
 import com.example.security.AlarmSirenEngine
 import com.example.security.CameraCaptureHelper
 import com.example.security.GuardConfig
+import com.example.security.OfflineLocationTrackerEngine
 import com.example.security.SecurityNotificationHelper
 import com.example.security.SensorSecurityManager
 import com.example.security.SensorTelemetry
@@ -368,7 +371,12 @@ data class UiState(
                 isUrgent = false
             )
         )
-    )
+    ),
+    val locationHistory: List<LocationHistoryEntity> = emptyList(),
+    val lastKnownLocation: LocationHistoryEntity? = null,
+    val isDeviceFrozen: Boolean = false,
+    val isLocationTracking30sActive: Boolean = true,
+    val lastSilentSmsTimestamp: Long? = null
 )
 
 class ThiefHunterViewModel(application: Application) : AndroidViewModel(application) {
@@ -380,6 +388,9 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     private val localSensorManager = SensorSecurityManager(application)
     private val localSirenEngine = AlarmSirenEngine(application)
     private val localNotificationHelper = SecurityNotificationHelper(application)
+    val offlineLocationTracker = OfflineLocationTrackerEngine(application, viewModelScope)
+    private val db = AppDatabase.getDatabase(application)
+    private val locationDao = db.locationHistoryDao()
 
     private var boundService: ThiefGuardService? = null
     private var isBound = false
@@ -416,6 +427,52 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
                     accountEmail = savedEmail ?: it.familyNetwork.accountEmail
                 )
             )
+        }
+
+        // Collect offline Room location history
+        viewModelScope.launch {
+            locationDao.getAllLocations().collect { list ->
+                _uiState.update { it.copy(locationHistory = list) }
+            }
+        }
+
+        // Collect latest location fixes from OfflineLocationTrackerEngine
+        viewModelScope.launch {
+            offlineLocationTracker.lastFix.collect { fix ->
+                _uiState.update { state ->
+                    state.copy(
+                        lastKnownLocation = fix,
+                        liveTrackerState = if (fix != null) {
+                            state.liveTrackerState.copy(
+                                latitude = fix.latitude,
+                                longitude = fix.longitude,
+                                accuracyMeters = fix.accuracy
+                            )
+                        } else state.liveTrackerState
+                    )
+                }
+            }
+        }
+
+        // Collect device frozen state
+        viewModelScope.launch {
+            offlineLocationTracker.isDeviceFrozen.collect { frozen ->
+                _uiState.update { it.copy(isDeviceFrozen = frozen) }
+            }
+        }
+
+        // Collect 30s tracking active state
+        viewModelScope.launch {
+            offlineLocationTracker.isTrackingActive.collect { active ->
+                _uiState.update { it.copy(isLocationTracking30sActive = active) }
+            }
+        }
+
+        // Collect last silent SMS dispatch timestamp
+        viewModelScope.launch {
+            offlineLocationTracker.lastSmsDispatchedTime.collect { time ->
+                _uiState.update { it.copy(lastSilentSmsTimestamp = time) }
+            }
         }
 
         // Collect telemetry from local sensor manager
@@ -554,6 +611,53 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
             )
         }
         showMessage("Anti-Theft Guard Disarmed.")
+    }
+
+    fun toggle30sLocationTracking() {
+        if (_uiState.value.isLocationTracking30sActive) {
+            offlineLocationTracker.stopTracking()
+            showMessage("30s Location Tracking paused.")
+        } else {
+            offlineLocationTracker.startTracking()
+            showMessage("30s Location Tracking activated (No battery drain).")
+        }
+    }
+
+    fun toggleDeviceFrozen(frozen: Boolean? = null) {
+        val target = frozen ?: !_uiState.value.isDeviceFrozen
+        offlineLocationTracker.setDeviceFrozen(target)
+        if (target) {
+            showMessage("DEVICE FROZEN: Emergency Silent SMS dispatched to emergency contact.")
+        } else {
+            showMessage("Device unfrozen. Normal guard resumed.")
+        }
+    }
+
+    fun dispatchSilentLocationSmsManual() {
+        val fix = _uiState.value.lastKnownLocation
+        val lat = fix?.latitude ?: _uiState.value.liveTrackerState.latitude
+        val lng = fix?.longitude ?: _uiState.value.liveTrackerState.longitude
+        val latStr = String.format(java.util.Locale.US, "%.6f", lat)
+        val lngStr = String.format(java.util.Locale.US, "%.6f", lng)
+        val sent = offlineLocationTracker.sendSilentSms(lat, lng)
+        if (sent) {
+            showMessage("Silent SMS sent: 'THIEF HUNTER: $latStr, $lngStr'")
+        } else {
+            showMessage("Failed to dispatch Silent SMS.")
+        }
+    }
+
+    fun markDeviceStolenWithSms() {
+        offlineLocationTracker.setDeviceStolen(true)
+        triggerGlobalSiren()
+        showMessage("Device flagged STOLEN! Silent location SMS dispatched.")
+    }
+
+    fun clearLocationHistory() {
+        viewModelScope.launch {
+            locationDao.clearHistory()
+            showMessage("Location History cleared.")
+        }
     }
 
     private var stolenTrackingJob: Job? = null
@@ -966,6 +1070,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         targetDevice?.let { dev ->
+            offlineLocationTracker.setDeviceStolen(true)
             // Send initial emergency SMS alert with coordinates
             sendSmsAlertForDevice(dev)
             startStolenDeviceTrackingLoop()
@@ -990,6 +1095,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
 
         val anyStillStolen = _uiState.value.myDevices.any { it.isStolen }
         if (!anyStillStolen) {
+            offlineLocationTracker.setDeviceStolen(false)
             stolenTrackingJob?.cancel()
             stolenTrackingJob = null
         }
@@ -997,6 +1103,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun updateDeviceEmergencyPhone(deviceId: String, newPhone: String) {
+        offlineLocationTracker.setEmergencyPhone(newPhone)
         _uiState.update { state ->
             val updated = state.myDevices.map { dev ->
                 if (dev.id == deviceId) dev.copy(emergencyContactPhone = newPhone) else dev
@@ -1013,17 +1120,20 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun sendSmsAlertForDevice(device: MobileDevice) {
         val app = getApplication<Application>()
-        val lat = _uiState.value.sensorTelemetry.latitude
-        val lng = _uiState.value.sensorTelemetry.longitude
-        val mapsUrl = "https://maps.google.com/?q=$lat,$lng"
-        val message = "🚨 THIEF HUNTER EMERGENCY ALERT: Device '${device.name}' (${device.model}, IMEI: ${device.imei}) marked STOLEN! Live GPS: $mapsUrl (Lat: $lat, Lng: $lng). Battery: ${_uiState.value.sensorTelemetry.batteryPct}%. Time: ${device.stolenTimestamp ?: "Now"}"
+        val lat = _uiState.value.lastKnownLocation?.latitude ?: _uiState.value.sensorTelemetry.latitude
+        val lng = _uiState.value.lastKnownLocation?.longitude ?: _uiState.value.sensorTelemetry.longitude
+        val latStr = String.format(Locale.US, "%.6f", lat)
+        val lngStr = String.format(Locale.US, "%.6f", lng)
+        val mapsUrl = "https://maps.google.com/?q=$latStr,$lngStr"
+        // Required format: "THIEF HUNTER: [lat], [lng]"
+        val message = "THIEF HUNTER: $latStr, $lngStr\nDevice '${device.name}' marked STOLEN!\n$mapsUrl"
 
         SmsAlertHelper.sendSms(
             context = app,
             phoneNumber = device.emergencyContactPhone,
             message = message,
             onSuccess = {
-                showMessage("SMS alert sent to ${device.emergencyContactPhone} with live GPS location!")
+                showMessage("SMS alert sent to ${device.emergencyContactPhone}: 'THIEF HUNTER: $latStr, $lngStr'")
             },
             onError = { err ->
                 showMessage("SMS alert dispatched: $err")

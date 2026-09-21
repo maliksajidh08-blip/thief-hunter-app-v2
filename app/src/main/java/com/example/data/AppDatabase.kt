@@ -89,14 +89,54 @@ interface IntruderCaptureDao {
     suspend fun clearAll()
 }
 
+@Entity(tableName = "location_history")
+data class LocationHistoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracy: Float = 10f,
+    val timestamp: Long = System.currentTimeMillis(),
+    val formattedTime: String,
+    val triggerSource: String = "PERIODIC_30S",
+    val isSentViaSms: Boolean = false,
+    val smsRecipient: String? = null,
+    val isOffline: Boolean = false,
+    val googleMapsUrl: String = "https://maps.google.com/?q=$latitude,$longitude"
+)
+
+@Dao
+interface LocationHistoryDao {
+    @Query("SELECT * FROM location_history ORDER BY timestamp DESC")
+    fun getAllLocations(): Flow<List<LocationHistoryEntity>>
+
+    @Query("SELECT * FROM location_history ORDER BY timestamp DESC LIMIT 50")
+    fun getRecentLocations(): Flow<List<LocationHistoryEntity>>
+
+    @Query("SELECT * FROM location_history ORDER BY timestamp DESC LIMIT 1")
+    fun getLastKnownLocation(): Flow<LocationHistoryEntity?>
+
+    @Query("SELECT * FROM location_history ORDER BY timestamp DESC LIMIT 1")
+    suspend fun getLastKnownLocationOnce(): LocationHistoryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLocation(location: LocationHistoryEntity): Long
+
+    @Query("DELETE FROM location_history WHERE id = :id")
+    suspend fun deleteLocation(id: Long)
+
+    @Query("DELETE FROM location_history")
+    suspend fun clearHistory()
+}
+
 @Database(
-    entities = [FamilyDeviceEntity::class, IntruderCaptureEntity::class],
-    version = 1,
+    entities = [FamilyDeviceEntity::class, IntruderCaptureEntity::class, LocationHistoryEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun familyDeviceDao(): FamilyDeviceDao
     abstract fun intruderCaptureDao(): IntruderCaptureDao
+    abstract fun locationHistoryDao(): LocationHistoryDao
 
     companion object {
         @Volatile
