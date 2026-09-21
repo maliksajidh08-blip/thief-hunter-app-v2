@@ -27,6 +27,8 @@ import com.example.data.StolenReport
 import com.example.security.AlarmSirenEngine
 import com.example.security.CameraCaptureHelper
 import com.example.security.GuardConfig
+import com.example.security.AutoSleepDetectorEngine
+import com.example.security.AutoSleepState
 import com.example.security.OfflineLocationTrackerEngine
 import com.example.security.SecurityNotificationHelper
 import com.example.security.SensorSecurityManager
@@ -376,7 +378,8 @@ data class UiState(
     val lastKnownLocation: LocationHistoryEntity? = null,
     val isDeviceFrozen: Boolean = false,
     val isLocationTracking30sActive: Boolean = true,
-    val lastSilentSmsTimestamp: Long? = null
+    val lastSilentSmsTimestamp: Long? = null,
+    val autoSleepState: AutoSleepState = AutoSleepState()
 )
 
 class ThiefHunterViewModel(application: Application) : AndroidViewModel(application) {
@@ -389,6 +392,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     private val localSirenEngine = AlarmSirenEngine(application)
     private val localNotificationHelper = SecurityNotificationHelper(application)
     val offlineLocationTracker = OfflineLocationTrackerEngine(application, viewModelScope)
+    val autoSleepDetector = AutoSleepDetectorEngine(application, viewModelScope)
     private val db = AppDatabase.getDatabase(application)
     private val locationDao = db.locationHistoryDao()
 
@@ -478,6 +482,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         // Collect telemetry from local sensor manager
         viewModelScope.launch {
             localSensorManager.telemetry.collect { tele ->
+                autoSleepDetector.onSensorTelemetryUpdate(tele.totalAcceleration, _uiState.value.isSystemArmed)
                 _uiState.update {
                     it.copy(
                         sensorTelemetry = tele,
@@ -489,6 +494,31 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
                         )
                     )
                 }
+            }
+        }
+
+        // Collect Auto-Sleep AI State
+        viewModelScope.launch {
+            autoSleepDetector.sleepState.collect { sleepState ->
+                _uiState.update { it.copy(autoSleepState = sleepState) }
+            }
+        }
+
+        autoSleepDetector.onAutoArmTriggered = {
+            if (!_uiState.value.isSystemArmed) {
+                armSystem()
+                showMessage("AI Auto-Sleep Guard: Inactivity reached 30s. Armed all sensors automatically.")
+            }
+        }
+
+        autoSleepDetector.onStrangerTouchBreach = { detail ->
+            localSensorManager.fireTrigger(TriggerReason.SLEEP_TOUCH_BREACH)
+        }
+
+        autoSleepDetector.onOwnerWakeUpVerified = {
+            if (_uiState.value.isSystemArmed || _uiState.value.isSirenPlaying) {
+                disarmSystem()
+                showMessage("✓ Owner wake-up recognized! Sensors disarmed peacefully.")
             }
         }
 
@@ -530,6 +560,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
                 TriggerReason.CHARGER_UNPLUGGED -> config.chargerUnplugEnabled
                 TriggerReason.USB_CONNECTED -> config.usbConnectionEnabled
                 TriggerReason.INTRUDER_FAILED_PIN -> config.intruderSelfieEnabled
+                TriggerReason.SLEEP_TOUCH_BREACH -> true
                 TriggerReason.MANUAL_PANIC -> true
             }
 
@@ -544,6 +575,9 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
                         activeBreachTrigger = reason,
                         isSirenPlaying = true
                     )
+                }
+                if (reason == TriggerReason.SLEEP_TOUCH_BREACH) {
+                    dispatchSleepBreachSmsAlert("Stranger touched phone during sleep")
                 }
             } else {
                 localSensorManager.clearTrigger()
@@ -1459,6 +1493,71 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
             )
         }
         showMessage("Emergency broadcasted to all family phones!")
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // AI FEATURE 1: AUTO-SLEEP DETECTION METHODS
+    // ═══════════════════════════════════════════════════════════
+
+    fun toggleAutoSleepDetection() {
+        val current = _uiState.value.autoSleepState.isEnabled
+        autoSleepDetector.setEnabled(!current)
+        showMessage(if (!current) "AI Auto-Sleep Detection Enabled (30s inactivity auto-arms)" else "AI Auto-Sleep Detection Disabled")
+    }
+
+    fun setSleepInactivityThreshold(seconds: Int) {
+        autoSleepDetector.setSleepThresholdSeconds(seconds)
+        showMessage("Sleep inactivity threshold set to ${seconds}s")
+    }
+
+    fun simulateSleepFastForward() {
+        autoSleepDetector.fastForwardSleepArming()
+        showMessage("⚡ Fast-forward: 30s stillness reached. Auto-arming all sensors!")
+    }
+
+    fun simulateSleepTouch(isOwner: Boolean) {
+        val isArmed = _uiState.value.isSystemArmed || _uiState.value.autoSleepState.isSleepArmed
+        if (!isArmed) {
+            showMessage("Please allow sleep auto-arm or tap 'ARM' first to test sleep touch.")
+            return
+        }
+
+        if (isOwner) {
+            // Owner wake up: Face recognition passes -> disarms with no alarm!
+            autoSleepDetector.confirmOwnerWakeUp("Owner face recognized via front camera AI.")
+        } else {
+            // Stranger midnight touch: Face unrecognized -> Alarm rings immediately + SMS dispatched!
+            autoSleepDetector.confirmStrangerBreach("Stranger face / unauthorized touch while sleeping")
+        }
+    }
+
+    fun resetSleepLearning() {
+        autoSleepDetector.resetSleepState()
+        showMessage("Sleep pattern tracking reset.")
+    }
+
+    private fun dispatchSleepBreachSmsAlert(detail: String) {
+        val app = getApplication<Application>()
+        val currentDevice = _uiState.value.myDevices.firstOrNull()
+        val emergencyPhone = currentDevice?.emergencyContactPhone ?: "+92 300 1234567"
+        val lat = _uiState.value.lastKnownLocation?.latitude ?: _uiState.value.sensorTelemetry.latitude
+        val lng = _uiState.value.lastKnownLocation?.longitude ?: _uiState.value.sensorTelemetry.longitude
+        val latStr = String.format(Locale.US, "%.6f", lat)
+        val lngStr = String.format(Locale.US, "%.6f", lng)
+        val mapsUrl = "https://maps.google.com/?q=$latStr,$lngStr"
+        val message = "🚨 THIEF HUNTER: Sleep Alert! Stranger touch while owner sleeping!\nGPS: $latStr, $lngStr\nMap: $mapsUrl"
+
+        SmsAlertHelper.sendSms(
+            context = app,
+            phoneNumber = emergencyPhone,
+            message = message,
+            onSuccess = {
+                showMessage("Emergency SMS dispatched to $emergencyPhone: Stranger sleep touch!")
+            },
+            onError = { err ->
+                showMessage("SMS alert notice: $err")
+            }
+        )
     }
 
     override fun onCleared() {

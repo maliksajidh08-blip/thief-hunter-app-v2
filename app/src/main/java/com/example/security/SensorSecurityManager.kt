@@ -67,6 +67,7 @@ enum class TriggerReason(val title: String, val patternKey: String) {
     CHARGER_UNPLUGGED("Charger Disconnected", "CHARGER_UNPLUG"),
     USB_CONNECTED("Unauthorized USB Connected", "USB_CONNECTION"),
     INTRUDER_FAILED_PIN("Failed Master PIN Attempt", "EMERGENCY_ALARM"),
+    SLEEP_TOUCH_BREACH("Sleep Guard: Unauthorized Touch While Sleeping", "EMERGENCY_ALARM"),
     MANUAL_PANIC("Manual Emergency Siren", "EMERGENCY_ALARM")
 }
 

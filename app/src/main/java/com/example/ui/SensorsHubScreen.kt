@@ -348,6 +348,19 @@ fun SensorsHubScreen(
             )
         }
 
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // AI FEATURE 1: AUTO-SLEEP DETECTION & LEARNING
+        AiAutoSleepCard(
+            sleepState = state.autoSleepState,
+            isSystemArmed = state.isSystemArmed,
+            onToggleEnable = { viewModel.toggleAutoSleepDetection() },
+            onSetThreshold = { viewModel.setSleepInactivityThreshold(it) },
+            onFastForward = { viewModel.simulateSleepFastForward() },
+            onSimulateTouch = { isOwner -> viewModel.simulateSleepTouch(isOwner) },
+            onResetLearning = { viewModel.resetSleepLearning() }
+        )
+
         Spacer(modifier = Modifier.height(18.dp))
 
         // 6 CORE FEATURES QUICK TOGGLES & TEST BUTTONS
