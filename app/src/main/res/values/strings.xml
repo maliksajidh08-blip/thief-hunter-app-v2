@@ -1,3 +1,8 @@
 <resources>
-    <string name="app_name">Thief Hunter</string>
+    <string name="app_name">Thief Hunter Guard</string>
+    <string name="charger_guard">Charger Guard</string>
+    <string name="charger_guard_desc">Public charging protection for airports, cafes and office</string>
+    <string name="about_app">About Thief Hunter Guard</string>
+    <string name="privacy_policy">Privacy Policy</string>
+    <string name="terms_of_service">Terms of Service</string>
 </resources>

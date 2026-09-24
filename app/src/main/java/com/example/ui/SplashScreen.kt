@@ -128,11 +128,11 @@ fun SplashScreen(
             Spacer(modifier = Modifier.height(28.dp))
 
             Text(
-                text = "Thief Hunter",
-                fontSize = 32.sp,
+                text = "Thief Hunter Guard",
+                fontSize = 28.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = YellowAccent,
-                letterSpacing = 1.sp,
+                letterSpacing = 0.5.sp,
                 textAlign = TextAlign.Center
             )
 

@@ -172,111 +172,11 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // 2. DEVICE PROTECTED CARD - EXACTLY 100DP HEIGHT, COMPACT
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = NavyDark),
-            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(100.dp)
-                .then(
-                    if (isRinging) Modifier.border(2.dp, pulseBorderColor, RoundedCornerShape(14.dp))
-                    else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
-                )
-                .testTag("home_status_card")
-        ) {
-            Column(
-                verticalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(if (isRinging) AlertRed else SafeGreen)
-                        ) {
-                            Icon(
-                                imageVector = if (isRinging) Icons.Default.Warning else Icons.Default.Shield,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Column {
-                            Text(
-                                text = if (isRinging) "EMERGENCY ALARM ACTIVE" else "Device is Protected",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = if (isRinging) "Security breach detected!" else "All 6 Sensors Active • Guard On",
-                                fontSize = 10.sp,
-                                color = if (isRinging) AlertRed else SafeGreen
-                            )
-                        }
-                    }
-
-                    // Small Sensors Hub shortcut chip
-                    Surface(
-                        color = Color.White.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier.clickable { viewModel.navigateTo(Screen.SENSORS_HUB) }
-                    ) {
-                        Text(
-                            text = "SENSORS",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = YellowAccent,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                        )
-                    }
-                }
-
-                // SIREN BUTTON (SOUND SIREN / STOP SIREN)
-                Button(
-                    onClick = {
-                        if (isRinging) viewModel.stopGlobalSiren()
-                        else viewModel.triggerGlobalSiren()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isRinging) AlertRed else YellowAccent,
-                        contentColor = if (isRinging) Color.White else NavyDark
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(34.dp)
-                        .testTag("siren_trigger_button")
-                ) {
-                    Icon(
-                        imageVector = if (isRinging) Icons.Default.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (isRinging) "STOP SIREN (DISARM)" else "SOUND SIREN",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        }
+        // 2. QUICK ACTIVATION WIDGET (1-Tap ARM all sensors, STOP alarm, Charger Guard)
+        QuickActionsWidget(
+            viewModel = viewModel,
+            modifier = Modifier.fillMaxWidth()
+        )
 
         Spacer(modifier = Modifier.height(6.dp))
 

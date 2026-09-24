@@ -4,8 +4,10 @@ object Localization {
 
     private val translations = mapOf(
         AppLanguage.ENGLISH to mapOf(
-            "app_name" to "Thief Hunter",
+            "app_name" to "Thief Hunter Guard",
             "tagline" to "Protect, Track & Recover Devices",
+            "about_app" to "About Thief Hunter Guard",
+            "charger_guard" to "Charger Guard",
             "splash_loading" to "Securing Device Shield...",
             "enter_app" to "ENTER DASHBOARD",
             "home_title" to "Security Command Center",
@@ -67,8 +69,10 @@ object Localization {
             "family_network" to "Family Security Network"
         ),
         AppLanguage.URDU to mapOf(
-            "app_name" to "تھیف ہنٹر",
+            "app_name" to "تھیف ہنٹر گارڈ",
             "tagline" to "موبائل چوری کی روک تھام اور ٹریکنگ",
+            "about_app" to "تھیف ہنٹر گارڈ کے بارے میں",
+            "charger_guard" to "چارجر گارڈ",
             "splash_loading" to "سیکیورٹی شیلڈ فعال ہو رہی ہے...",
             "enter_app" to "ڈیش بورڈ میں داخل ہوں",
             "home_title" to "سیکیورٹی کمانڈ سینٹر",
@@ -130,8 +134,10 @@ object Localization {
             "simulated_alert" to "اینٹی تھیفٹ سائرن بج رہا ہے!"
         ),
         AppLanguage.HINDI to mapOf(
-            "app_name" to "थीफ हंटर",
+            "app_name" to "थीफ हंटर गार्ड",
             "tagline" to "मोबाइल सुरक्षा और लाइव ट्रैकिंग",
+            "about_app" to "थीफ हंटर गार्ड के बारे में",
+            "charger_guard" to "चार्जर गार्ड",
             "splash_loading" to "सुरक्षा कवच सक्रिय हो रहा है...",
             "enter_app" to "डैशबोर्ड खोलें",
             "home_title" to "सुरक्षा नियंत्रण केंद्र",
@@ -192,8 +198,10 @@ object Localization {
             "simulated_alert" to "एंटी-थेफ्ट सायरन चालू है!"
         ),
         AppLanguage.ARABIC to mapOf(
-            "app_name" to "صائد اللصوص",
+            "app_name" to "صائد اللصوص - حارس الأمان (Thief Hunter Guard)",
             "tagline" to "حماية وتتبع واستعادة الأجهزة المسروقة",
+            "about_app" to "حول حارس صائد اللصوص",
+            "charger_guard" to "حارس الشاحن",
             "splash_loading" to "جاري تفعيل درع الأمان...",
             "enter_app" to "الدخول إلى لوحة التحكم",
             "home_title" to "مركز التحكم الأمني",
@@ -254,8 +262,10 @@ object Localization {
             "simulated_alert" to "صفارة الإنذار الأمنية تدوي الآن!"
         ),
         AppLanguage.SPANISH to mapOf(
-            "app_name" to "Thief Hunter",
+            "app_name" to "Thief Hunter Guard",
             "tagline" to "Protege, Rastrea y Recupera Dispositivos",
+            "about_app" to "Acerca de Thief Hunter Guard",
+            "charger_guard" to "Protector de Cargador",
             "splash_loading" to "Activando Escudo de Seguridad...",
             "enter_app" to "ENTRAR AL PANEL",
             "home_title" to "Centro de Control de Seguridad",

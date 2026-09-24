@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item
-        android:width="72dp"
-        android:height="72dp"
-        android:drawable="@drawable/ic_thief_hunter_logo"
+        android:width="66dp"
+        android:height="66dp"
+        android:drawable="@drawable/thief_hunter_guard_icon_1790283452171"
         android:gravity="center" />
 </layer-list>
 

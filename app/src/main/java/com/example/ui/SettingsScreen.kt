@@ -1,5 +1,17 @@
 package com.example.ui
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Policy
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Shield
+import com.example.data.AlarmSoundType
+import com.example.data.Screen
+import com.example.security.ChargerGuardEnvironment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,6 +82,7 @@ import com.example.ui.theme.NavyDark
 import com.example.ui.theme.NavyPrimary
 import com.example.ui.theme.SafeGreen
 import com.example.ui.theme.YellowAccent
+import com.example.ui.theme.YellowDark
 
 @Composable
 fun SettingsScreen(
@@ -697,6 +710,414 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // 5. ALARM SOUND OPTIONS (Play Store Feature A)
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    RoundedCornerShape(18.dp)
+                )
+                .testTag("card_alarm_sounds")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(NavyPrimary.copy(alpha = 0.1f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = null,
+                            tint = NavyPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Alarm Sound Options",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Select high-decibel siren tone for theft breaches",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AlarmSoundType.values().forEach { sound ->
+                        val isSelected = state.selectedAlarmSound == sound
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) NavyPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, YellowAccent) else null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setAlarmSound(sound) }
+                                .testTag("sound_option_${sound.id}")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(text = sound.icon, fontSize = 16.sp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = sound.displayName,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) YellowAccent else MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = sound.description,
+                                            fontSize = 10.sp,
+                                            lineHeight = 14.sp,
+                                            color = if (isSelected) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isSelected) YellowAccent else NavyPrimary.copy(alpha = 0.15f),
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clickable { viewModel.previewAlarmSound(sound) }
+                                        .testTag("btn_preview_${sound.id}")
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Test Sound",
+                                            tint = if (isSelected) NavyDark else NavyPrimary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // 6. CHARGER GUARD (ENHANCED) PUBLIC CHARGING PROTECTION CARD
+        val isChargerActive = state.isChargerGuardActive
+        val chargerState = state.chargerGuardState
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    1.dp,
+                    if (isChargerActive) YellowAccent else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    RoundedCornerShape(18.dp)
+                )
+                .testTag("card_charger_guard")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(if (isChargerActive) YellowAccent.copy(alpha = 0.2f) else NavyPrimary.copy(alpha = 0.1f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Power,
+                                contentDescription = null,
+                                tint = if (isChargerActive) YellowDark else NavyPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Charger Guard (Enhanced)",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Public charging protection (Airports, cafes, offices)",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = isChargerActive,
+                        onCheckedChange = { viewModel.toggleChargerGuard() },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = YellowAccent,
+                            checkedTrackColor = NavyPrimary
+                        ),
+                        modifier = Modifier.testTag("switch_charger_guard")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isChargerActive) SafeGreen.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isChargerActive) SafeGreen else Color.Gray)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isChargerActive) "ARMED: Unplug or phone movement triggers LOUD ALARM" else "Standby: Tap switch to arm before public charging",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isChargerActive) SafeGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Charging Environment Preset:",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    ChargerGuardEnvironment.values().forEach { env ->
+                        val isEnvSelected = chargerState.environment == env
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isEnvSelected) NavyPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { viewModel.setChargerGuardEnvironment(env) }
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(vertical = 6.dp)
+                            ) {
+                                Text(text = env.icon, fontSize = 14.sp)
+                                Text(
+                                    text = env.label.split(" ").first(),
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isEnvSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isEnvSelected) YellowAccent else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // 7. LEGAL, PRIVACY POLICY & ABOUT CARD (Play Store Ready)
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    RoundedCornerShape(18.dp)
+                )
+                .testTag("card_privacy_about")
+        ) {
+            val context = LocalContext.current
+            fun openPrivacyUrl() {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://maliksajidh08-blip.github.io/thief-hunter-website/privacy.html"))
+                    context.startActivity(intent)
+                } catch (_: Exception) {}
+            }
+
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(NavyPrimary.copy(alpha = 0.1f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = NavyPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Play Store Compliance & About",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Thief Hunter Guard v1.0.0 • Legal & Transparency",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Privacy Policy Link
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { openPrivacyUrl() }
+                        .testTag("btn_settings_privacy_policy")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Policy,
+                                contentDescription = null,
+                                tint = NavyPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Privacy Policy",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "maliksajidh08-blip.github.io/thief-hunter-website/privacy.html",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            tint = YellowDark,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // About Screen Button
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.navigateTo(Screen.ABOUT) }
+                        .testTag("btn_settings_about")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = NavyPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "About Thief Hunter Guard",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Version 1.0.0 • Support: sajidhr905@gmail.com",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            tint = YellowDark,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
             }

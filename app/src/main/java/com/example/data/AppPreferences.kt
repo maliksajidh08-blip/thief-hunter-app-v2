@@ -9,9 +9,28 @@ object AppPreferences {
     private const val KEY_USER_DISPLAY_NAME = "key_user_display_name"
     private const val KEY_USER_PHOTO_URL = "key_user_photo_url"
     private const val KEY_IS_LOGGED_IN = "key_is_logged_in"
+    private const val KEY_ALARM_SOUND_TYPE = "key_alarm_sound_type"
+    private const val KEY_CHARGER_GUARD_ENABLED = "key_charger_guard_enabled"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    fun getAlarmSoundType(context: Context): AlarmSoundType {
+        val id = getPrefs(context).getString(KEY_ALARM_SOUND_TYPE, AlarmSoundType.POLICE_SIREN.id)
+        return AlarmSoundType.values().firstOrNull { it.id == id } ?: AlarmSoundType.POLICE_SIREN
+    }
+
+    fun setAlarmSoundType(context: Context, soundType: AlarmSoundType) {
+        getPrefs(context).edit().putString(KEY_ALARM_SOUND_TYPE, soundType.id).apply()
+    }
+
+    fun isChargerGuardEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_CHARGER_GUARD_ENABLED, false)
+    }
+
+    fun setChargerGuardEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_CHARGER_GUARD_ENABLED, enabled).apply()
     }
 
     fun isLoggedIn(context: Context): Boolean {

@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Thief Hunter"
+rootProject.name = "Thief Hunter Guard"
 
 include(":app")

@@ -51,6 +51,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".ui.QuickActivationWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.sajid.thiefhunterguard.ACTION_WIDGET_ARM" />
+                <action android:name="com.sajid.thiefhunterguard.ACTION_WIDGET_STOP" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_widget_info" />
+        </receiver>
     </application>
 
 </manifest>

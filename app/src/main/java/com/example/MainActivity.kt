@@ -71,6 +71,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.AppLanguage
 import com.example.data.Screen
 import com.example.security.CameraCaptureHelper
+import com.example.ui.AboutScreen
 import com.example.ui.CommunityScreen
 import com.example.ui.DeviceRegistrationScreen
 import com.example.ui.FamilyNetworkScreen
@@ -216,6 +217,7 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
                                             Screen.COMMUNITY -> viewModel.tr("community")
                                             Screen.REPORT_THEFT -> viewModel.tr("report_theft")
                                             Screen.SETTINGS -> viewModel.tr("settings")
+                                            Screen.ABOUT -> viewModel.tr("about_app")
                                             else -> viewModel.tr("app_name")
                                         },
                                         fontSize = 18.sp,
@@ -348,6 +350,7 @@ fun ThiefHunterApp(viewModel: ThiefHunterViewModel) {
                     Screen.COMMUNITY -> CommunityScreen(viewModel = viewModel)
                     Screen.REPORT_THEFT -> ReportTheftScreen(viewModel = viewModel)
                     Screen.SETTINGS -> SettingsScreen(viewModel = viewModel)
+                    Screen.ABOUT -> AboutScreen(viewModel = viewModel)
                 }
             }
         }

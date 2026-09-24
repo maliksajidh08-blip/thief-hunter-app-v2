@@ -1,6 +1,8 @@
 package com.example.ui
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -196,8 +198,8 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(18.dp))
 
                 Text(
-                    text = "Thief Hunter",
-                    fontSize = 30.sp,
+                    text = "Thief Hunter Guard",
+                    fontSize = 28.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White,
                     letterSpacing = 0.5.sp
@@ -343,7 +345,7 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "By continuing, you agree to Thief Hunter",
+                    text = "By continuing, you agree to Thief Hunter Guard",
                     fontSize = 11.sp,
                     color = Color.White.copy(alpha = 0.6f)
                 )
@@ -351,7 +353,16 @@ fun LoginScreen(
                     text = "Terms of Service & Privacy Policy",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = YellowAccent
+                    color = YellowAccent,
+                    modifier = Modifier.clickable {
+                        try {
+                            val intent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://maliksajidh08-blip.github.io/thief-hunter-website/privacy.html")
+                            )
+                            context.startActivity(intent)
+                        } catch (_: Exception) {}
+                    }
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }

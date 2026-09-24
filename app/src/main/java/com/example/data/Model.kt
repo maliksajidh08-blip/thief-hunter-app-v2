@@ -135,6 +135,14 @@ data class FamilyNetworkState(
     val alerts: List<FamilyAlert> = emptyList()
 )
 
+enum class AlarmSoundType(val id: String, val displayName: String, val icon: String, val description: String) {
+    POLICE_SIREN("police_siren", "Police Siren", "🔵", "High-pitch alternating emergency police siren (Default)"),
+    DOG_BARKING("dog_barking", "Dog Barking", "🔴", "Aggressive watchdog guarding staccato bark & growl"),
+    GUN_SHOT("gun_shot", "Gun Shot", "🟡", "Rapid tactical gunshot detonations with echo reverberation"),
+    STANDARD_BEEP("standard_beep", "Standard Beep", "🟢", "Piercing 2.8kHz dual-tone electronic alarm pulses"),
+    CUSTOM_SOUND("custom_sound", "Custom Sound", "🔵", "High-intensity oscillating tactical cyber warble")
+}
+
 enum class Screen(val titleKey: String) {
     SPLASH("app_name"),
     LOGIN("login"),
@@ -148,6 +156,7 @@ enum class Screen(val titleKey: String) {
     REPORT_THEFT("report_theft"),
     INTRUDER_SELFIE("intruder_selfie"),
     DEVICE_REGISTRATION("register_device"),
-    SETTINGS("settings")
+    SETTINGS("settings"),
+    ABOUT("about_app")
 }
 

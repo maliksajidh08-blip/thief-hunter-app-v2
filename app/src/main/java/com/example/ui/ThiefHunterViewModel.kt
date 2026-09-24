@@ -8,6 +8,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.AlarmSoundType
 import com.example.data.AppDatabase
 import com.example.data.AppLanguage
 import com.example.data.AppPreferences
@@ -26,6 +27,10 @@ import com.example.data.Screen
 import com.example.data.StolenReport
 import com.example.security.AlarmSirenEngine
 import com.example.security.CameraCaptureHelper
+import com.example.security.ChargerBreachType
+import com.example.security.ChargerGuard
+import com.example.security.ChargerGuardEnvironment
+import com.example.security.ChargerGuardState
 import com.example.security.GuardConfig
 import com.example.security.AutoSleepDetectorEngine
 import com.example.security.AutoSleepState
@@ -379,7 +384,10 @@ data class UiState(
     val isDeviceFrozen: Boolean = false,
     val isLocationTracking30sActive: Boolean = true,
     val lastSilentSmsTimestamp: Long? = null,
-    val autoSleepState: AutoSleepState = AutoSleepState()
+    val autoSleepState: AutoSleepState = AutoSleepState(),
+    val selectedAlarmSound: AlarmSoundType = AlarmSoundType.POLICE_SIREN,
+    val isChargerGuardActive: Boolean = false,
+    val chargerGuardState: ChargerGuardState = ChargerGuardState()
 )
 
 class ThiefHunterViewModel(application: Application) : AndroidViewModel(application) {
@@ -393,6 +401,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     private val localNotificationHelper = SecurityNotificationHelper(application)
     val offlineLocationTracker = OfflineLocationTrackerEngine(application, viewModelScope)
     val autoSleepDetector = AutoSleepDetectorEngine(application, viewModelScope)
+    val chargerGuard = ChargerGuard(application, viewModelScope)
     private val db = AppDatabase.getDatabase(application)
     private val locationDao = db.locationHistoryDao()
 
@@ -421,16 +430,36 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         val isUserLogged = AppPreferences.isLoggedIn(app)
         val displayName = AppPreferences.getUserDisplayName(app)
         val photoUrl = AppPreferences.getUserPhotoUrl(app)
+        val savedSound = AppPreferences.getAlarmSoundType(app)
+        val isChargerGuardSaved = AppPreferences.isChargerGuardEnabled(app)
+
+        if (isChargerGuardSaved) {
+            chargerGuard.activate()
+        }
+
         _uiState.update {
             it.copy(
                 userEmail = savedEmail,
                 isLoggedIn = isUserLogged,
                 userDisplayName = displayName,
                 userPhotoUrl = photoUrl,
+                selectedAlarmSound = savedSound,
+                isChargerGuardActive = chargerGuard.guardState.value.isActive,
+                chargerGuardState = chargerGuard.guardState.value,
                 familyNetwork = it.familyNetwork.copy(
                     accountEmail = savedEmail ?: it.familyNetwork.accountEmail
                 )
             )
+        }
+
+        viewModelScope.launch {
+            chargerGuard.guardState.collect { cgState ->
+                _uiState.update { it.copy(isChargerGuardActive = cgState.isActive, chargerGuardState = cgState) }
+            }
+        }
+
+        chargerGuard.onBreachDetected = { breach ->
+            onChargerGuardBreached(breach)
         }
 
         // Collect offline Room location history
@@ -974,6 +1003,93 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
                 } else dev
             }
             state.copy(myDevices = updated)
+        }
+    }
+
+    fun setAlarmSound(sound: AlarmSoundType) {
+        AppPreferences.setAlarmSoundType(getApplication(), sound)
+        _uiState.update { it.copy(selectedAlarmSound = sound) }
+        showMessage("Alarm Tone set to: ${sound.displayName}")
+    }
+
+    fun previewAlarmSound(sound: AlarmSoundType) {
+        localSirenEngine.previewSound(sound, 3000L)
+        _uiState.update { it.copy(isSirenPlaying = true) }
+        viewModelScope.launch {
+            delay(3000L)
+            _uiState.update { it.copy(isSirenPlaying = false) }
+        }
+    }
+
+    fun toggleChargerGuard(environment: ChargerGuardEnvironment = ChargerGuardEnvironment.AIRPORT) {
+        val app = getApplication<Application>()
+        if (chargerGuard.guardState.value.isActive) {
+            chargerGuard.deactivate()
+            AppPreferences.setChargerGuardEnabled(app, false)
+            showMessage("Charger Guard Disarmed.")
+        } else {
+            chargerGuard.activate(environment)
+            AppPreferences.setChargerGuardEnabled(app, true)
+            showMessage("Charger Guard Armed (${environment.label}). Unplugging will trigger loud alarm!")
+        }
+    }
+
+    fun setChargerGuardEnvironment(env: ChargerGuardEnvironment) {
+        chargerGuard.setEnvironment(env)
+    }
+
+    fun onChargerGuardBreached(breach: ChargerBreachType) {
+        localSirenEngine.startSiren("CHARGER_UNPLUG", _uiState.value.selectedAlarmSound)
+        _uiState.update {
+            it.copy(
+                isSirenPlaying = true,
+                activeBreachTrigger = TriggerReason.CHARGER_UNPLUGGED,
+                triggerPhotoCaptureEvent = System.currentTimeMillis()
+            )
+        }
+        localNotificationHelper.showTriggerNotification(
+            breach.title,
+            breach.message
+        )
+        recordIntruderCapture("Charger Guard Breach: ${breach.title}")
+        val loc = _uiState.value.lastKnownLocation
+        val lat = loc?.latitude ?: 31.5204
+        val lng = loc?.longitude ?: 74.3587
+        val emergencyPhone = _uiState.value.myDevices.firstOrNull()?.emergencyContactPhone ?: "+923004589211"
+        val smsMessage = "THIEF HUNTER GUARD: Public Charger Guard breached! ${breach.title}. Location: https://maps.google.com/?q=$lat,$lng"
+        SmsAlertHelper.sendSms(
+            context = getApplication(),
+            phoneNumber = emergencyPhone,
+            message = smsMessage
+        )
+    }
+
+    fun startSiren(vibrationPattern: String = "EMERGENCY_ALARM") {
+        localSirenEngine.startSiren(vibrationPattern, _uiState.value.selectedAlarmSound)
+        _uiState.update {
+            it.copy(
+                isSirenPlaying = true,
+                activeBreachTrigger = TriggerReason.MANUAL_PANIC
+            )
+        }
+    }
+
+    fun stopSiren() {
+        localSirenEngine.stopSiren()
+        localNotificationHelper.cancelTriggerNotification()
+        _uiState.update {
+            it.copy(
+                isSirenPlaying = false,
+                activeBreachTrigger = null
+            )
+        }
+    }
+
+    fun toggleSystemArm() {
+        if (_uiState.value.isSystemArmed) {
+            disarmSystem()
+        } else {
+            armSystem()
         }
     }
 

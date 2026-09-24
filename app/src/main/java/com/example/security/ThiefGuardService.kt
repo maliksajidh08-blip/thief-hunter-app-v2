@@ -83,6 +83,9 @@ class ThiefGuardService : Service() {
             ACTION_DISARM -> {
                 disarmAndStopAlarm()
             }
+            ACTION_ARM -> {
+                sensorManager.startArmingSequence(0, GuardConfig())
+            }
         }
         return START_STICKY
     }
@@ -114,5 +117,6 @@ class ThiefGuardService : Service() {
     companion object {
         const val ACTION_STOP_SERVICE = "com.example.security.ACTION_STOP_SERVICE"
         const val ACTION_DISARM = "com.example.security.ACTION_DISARM"
+        const val ACTION_ARM = "com.example.security.ACTION_ARM"
     }
 }

@@ -14,11 +14,11 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.thiefhunter.trkxqz"
+    applicationId = "com.sajid.thiefhunterguard"
     minSdk = 24
-    targetSdk = 36
+    targetSdk = 34
     versionCode = 1
-    versionName = "1.0"
+    versionName = "1.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
