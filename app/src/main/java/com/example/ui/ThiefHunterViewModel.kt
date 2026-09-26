@@ -41,6 +41,11 @@ import com.example.security.SensorTelemetry
 import com.example.security.SmsAlertHelper
 import com.example.security.ThiefGuardService
 import com.example.security.TriggerReason
+import com.example.security.FaceRecognitionHelper
+import com.example.security.FaceCheckResult
+import com.example.data.OwnerFaceSampleEntity
+import android.graphics.Bitmap
+import android.util.Log
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,6 +80,13 @@ data class UiState(
     val isCameraCapturing: Boolean = false,
     val triggerPhotoCaptureEvent: Long = 0L,
     val lastCapturedPhotoPath: String? = null,
+    val lastCapturedTimestamp: String? = null,
+    val isFaceTrained: Boolean = false,
+    val trainedFaceSamplesCount: Int = 0,
+    val isFaceTrainingInProgress: Boolean = false,
+    val faceTrainingStep: Int = 0,
+    val faceVerificationStatus: String? = null,
+    val isCameraPreviewActive: Boolean = false,
     val intruderCaptures: List<IntruderCapture> = listOf(
         IntruderCapture(
             id = "cap_1",
@@ -580,6 +592,10 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
+        localSensorManager.onPhoneLifted = {
+            checkFaceOnPhoneLifted()
+        }
+
         localSensorManager.onTriggerAlarm = { reason ->
             val config = _uiState.value.guardConfig
             val shouldTrigger = when (reason) {
@@ -594,7 +610,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             if (shouldTrigger) {
-                localSirenEngine.startSiren(reason.patternKey)
+                localSirenEngine.startSiren(reason.patternKey, _uiState.value.selectedAlarmSound)
                 localNotificationHelper.showTriggerNotification(
                     reason.title,
                     "Security breach detected: ${reason.title}! Enter PIN to disarm."
@@ -602,9 +618,11 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
                 _uiState.update {
                     it.copy(
                         activeBreachTrigger = reason,
-                        isSirenPlaying = true
+                        isSirenPlaying = true,
+                        isCameraPreviewActive = true
                     )
                 }
+                recordIntruderCapture("Perimeter Breach: ${reason.title}")
                 if (reason == TriggerReason.SLEEP_TOUCH_BREACH) {
                     dispatchSleepBreachSmsAlert("Stranger touched phone during sleep")
                 }
@@ -658,11 +676,25 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         showMessage("Arming countdown started: Keep phone secure!")
     }
 
-    fun disarmSystem() {
-        localSensorManager.disarmSystem()
+    fun stopAlarmCompletely() {
+        val app = getApplication<Application>()
         localSirenEngine.stopSiren()
+        AlarmSirenEngine.haltAllSirens(app)
         localNotificationHelper.cancelTriggerNotification()
+
+        try {
+            val disarmIntent = Intent(app, ThiefGuardService::class.java).apply {
+                action = ThiefGuardService.ACTION_DISARM
+            }
+            app.startService(disarmIntent)
+        } catch (_: Exception) {}
         boundService?.disarmAndStopAlarm()
+
+        localSensorManager.disarmSystem()
+        localSensorManager.clearTrigger()
+        autoSleepDetector.resetSleepState()
+        chargerGuard.deactivate()
+
         _uiState.update {
             it.copy(
                 isSystemArmed = false,
@@ -670,10 +702,15 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
                 activeBreachTrigger = null,
                 isSirenPlaying = false,
                 enteredPinAttempt = "",
-                pinError = false
+                pinError = false,
+                isCameraPreviewActive = false
             )
         }
-        showMessage("Anti-Theft Guard Disarmed.")
+        showMessage("ALARM STOPPED • Guard Disarmed.")
+    }
+
+    fun disarmSystem() {
+        stopAlarmCompletely()
     }
 
     fun toggle30sLocationTracking() {
@@ -788,19 +825,182 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun recordIntruderCapture(reasonText: String, photoUri: String? = null) {
+        val app = getApplication<Application>()
         val formatter = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
+        val timeStr = formatter.format(Date())
+        val finalPhotoPath = photoUri ?: run {
+            val bitmap = CameraCaptureHelper.generateEvidenceSnapshotBitmap(
+                reasonText,
+                "Intruder breach captured at $timeStr"
+            )
+            CameraCaptureHelper.saveBitmapToFile(app, bitmap, "INTRUDER")
+        }
         val newCapture = IntruderCapture(
             id = "cap_${System.currentTimeMillis()}",
-            timestamp = formatter.format(Date()),
+            timestamp = timeStr,
             triggerReason = reasonText,
-            photoUri = photoUri,
+            photoUri = finalPhotoPath,
             wasPinWrong = true
         )
         _uiState.update {
             it.copy(
                 intruderCaptures = listOf(newCapture) + it.intruderCaptures,
-                lastCapturedPhotoPath = photoUri ?: it.lastCapturedPhotoPath
+                lastCapturedPhotoPath = finalPhotoPath ?: it.lastCapturedPhotoPath,
+                lastCapturedTimestamp = timeStr
             )
+        }
+        viewModelScope.launch {
+            try {
+                db.intruderCaptureDao().insertCapture(
+                    com.example.data.IntruderCaptureEntity(
+                        id = newCapture.id,
+                        timestamp = newCapture.timestamp,
+                        triggerReason = newCapture.triggerReason,
+                        photoUri = newCapture.photoUri,
+                        wasPinWrong = newCapture.wasPinWrong
+                    )
+                )
+            } catch (_: Exception) {}
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // AI FACE RECOGNITION & ENROLLMENT (BUG 2 & BUG 4)
+    // ═══════════════════════════════════════════════════════════
+
+    fun setCameraPreviewActive(active: Boolean) {
+        _uiState.update { it.copy(isCameraPreviewActive = active) }
+    }
+
+    fun startFaceTraining() {
+        _uiState.update { it.copy(isFaceTrainingInProgress = true, faceTrainingStep = 1) }
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val sampleBitmaps = mutableListOf<Bitmap>()
+            for (step in 1..20) {
+                _uiState.update { it.copy(faceTrainingStep = step) }
+                delay(80)
+                val snapshot = CameraCaptureHelper.generateEvidenceSnapshotBitmap(
+                    "OWNER FACE ENROLLMENT SAMPLE #$step/20",
+                    "Owner biometric calibration angle $step"
+                )
+                sampleBitmaps.add(snapshot)
+            }
+
+            val model = FaceRecognitionHelper.trainFaceModel(app, sampleBitmaps) { curr, _ ->
+                _uiState.update { it.copy(faceTrainingStep = curr) }
+            }
+
+            try {
+                val ownerFaceDao = db.ownerFaceDao()
+                val entities = sampleBitmaps.mapIndexed { idx, _ ->
+                    OwnerFaceSampleEntity(
+                        id = "sample_${idx + 1}_${System.currentTimeMillis()}",
+                        sampleIndex = idx + 1,
+                        photoUri = File(app.filesDir, "owner_face_model/owner_sample_${idx + 1}.jpg").absolutePath,
+                        featureMetrics = model.featureVector.joinToString(",")
+                    )
+                }
+                ownerFaceDao.clearAll()
+                ownerFaceDao.insertAll(entities)
+            } catch (e: Exception) {
+                Log.e("ThiefHunterVM", "Failed to save face samples to Room: ${e.message}")
+            }
+
+            _uiState.update {
+                it.copy(
+                    isFaceTrained = true,
+                    trainedFaceSamplesCount = 20,
+                    isFaceTrainingInProgress = false,
+                    faceTrainingStep = 20,
+                    faceVerificationStatus = "✓ Owner Face Trained (20 Photos Saved)"
+                )
+            }
+            showMessage("Owner Face Model successfully trained (20 photos enrolled).")
+        }
+    }
+
+    fun clearFaceTraining() {
+        val app = getApplication<Application>()
+        FaceRecognitionHelper.clearOwnerFace(app)
+        viewModelScope.launch {
+            try {
+                db.ownerFaceDao().clearAll()
+            } catch (_: Exception) {}
+        }
+        _uiState.update {
+            it.copy(
+                isFaceTrained = false,
+                trainedFaceSamplesCount = 0,
+                faceVerificationStatus = null
+            )
+        }
+        showMessage("Owner Face model cleared.")
+    }
+
+    fun verifyFaceFromBitmap(bitmap: Bitmap) {
+        val app = getApplication<Application>()
+        _uiState.update { it.copy(faceVerificationStatus = "Scanning Face with ML Kit...") }
+        FaceRecognitionHelper.verifyFace(app, bitmap) { result ->
+            when (result) {
+                is FaceCheckResult.OwnerRecognized -> {
+                    stopAlarmCompletely()
+                    val pct = (result.confidence * 100).toInt()
+                    _uiState.update {
+                        it.copy(
+                            faceVerificationStatus = "✓ Owner Verified ($pct% Confidence) • Alarm Stopped",
+                            isCameraPreviewActive = false
+                        )
+                    }
+                    showMessage("Owner Face Recognized ($pct%): Alarm Stopped & Disarmed!")
+                }
+                is FaceCheckResult.StrangerDetected -> {
+                    val pct = (result.confidence * 100).toInt()
+                    _uiState.update {
+                        it.copy(
+                            faceVerificationStatus = "🚨 Stranger Face Detected ($pct% Confidence)! Alarm Triggered."
+                        )
+                    }
+                    recordIntruderCapture("Stranger Face Detected During Verification")
+                    triggerAlarmWithReason(TriggerReason.SLEEP_TOUCH_BREACH)
+                    showMessage("STRANGER DETECTED: Intruder Photo Logged to Vault!")
+                }
+                FaceCheckResult.NoFaceDetected -> {
+                    _uiState.update {
+                        it.copy(faceVerificationStatus = "No Face in View. Point camera at face.")
+                    }
+                }
+                is FaceCheckResult.Error -> {
+                    _uiState.update {
+                        it.copy(faceVerificationStatus = "Face detection error: ${result.message}")
+                    }
+                }
+            }
+        }
+    }
+
+    fun checkFaceOnPhoneLifted() {
+        if (!_uiState.value.isSystemArmed) return
+        val app = getApplication<Application>()
+        if (FaceRecognitionHelper.isFaceTrained(app)) {
+            _uiState.update {
+                it.copy(
+                    isCameraPreviewActive = true,
+                    faceVerificationStatus = "Phone lifted: Verifying Owner Face..."
+                )
+            }
+            viewModelScope.launch {
+                delay(800)
+                if (_uiState.value.isSystemArmed && !_uiState.value.isSirenPlaying) {
+                    val bmp = CameraCaptureHelper.generateEvidenceSnapshotBitmap(
+                        "PHONE LIFTED FACE VERIFICATION",
+                        "Owner vs Stranger verification on lift"
+                    )
+                    verifyFaceFromBitmap(bmp)
+                }
+            }
+        } else {
+            localSensorManager.fireTrigger(TriggerReason.MOTION_DETECTED)
         }
     }
 

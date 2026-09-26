@@ -154,16 +154,16 @@ class AutoSleepDetectorEngine(
         if (delta > 0.35f) {
             val state = _sleepState.value
 
-            if (state.isSleepArmed) {
-                // Someone touched the phone while in Sleep Mode!
+            if (state.isSleepArmed && isArmed) {
+                // Someone touched the phone while both Sleep Mode and System are armed!
                 handleTouchDuringSleep(totalAccel, delta)
             } else {
-                // Phone is being actively moved, reset inactivity timer
+                // Phone is being actively moved or disarmed, reset inactivity timer
                 lastMovementTimestamp = now
                 _sleepState.update {
                     it.copy(
                         inactivitySeconds = 0,
-                        lastSleepEventMessage = "Movement detected (${String.format(Locale.US, "%.2f", delta)} m/s²). Inactivity reset."
+                        lastSleepEventMessage = "Movement detected (${String.format(Locale.US, "%.2f", delta)} m/s²). Standby."
                     )
                 }
             }
@@ -267,17 +267,13 @@ class AutoSleepDetectorEngine(
             // Touch style analysis:
             // Gentle wake-up touch: delta between 0.35 and 1.8 m/s²
             // Violent snatch/grab: delta > 3.0 m/s²
-            val isGentleWakeUp = touchDelta < 2.0f
-            val isExpectedWakeHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY) in 5..9
+            val isGentleWakeUp = touchDelta < 2.5f
+            val isOwner = isGentleWakeUp
 
-            // If simulated owner or normal morning wake-up pattern
-            // By default in manual tests, can be commanded via simulateWakeUp(isOwner)
-            val isLikelyOwner = isGentleWakeUp && isExpectedWakeHour
-
-            if (isLikelyOwner) {
-                confirmOwnerWakeUp("Gentle touch style & morning schedule matched.")
+            if (isOwner) {
+                confirmOwnerWakeUp("Gentle lift / owner motion recognized.")
             } else {
-                confirmStrangerBreach("Unrecognized touch / intruder face pattern!")
+                confirmStrangerBreach("Abrupt snatch / unrecognized touch!")
             }
         }
     }

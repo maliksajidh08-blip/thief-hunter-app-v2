@@ -11,9 +11,44 @@ object AppPreferences {
     private const val KEY_IS_LOGGED_IN = "key_is_logged_in"
     private const val KEY_ALARM_SOUND_TYPE = "key_alarm_sound_type"
     private const val KEY_CHARGER_GUARD_ENABLED = "key_charger_guard_enabled"
+    private const val KEY_OWNER_FACE_ENROLLED = "key_owner_face_enrolled"
+    private const val KEY_OWNER_FACE_COUNT = "key_owner_face_count"
+    private const val KEY_OWNER_FACE_BASELINE = "key_owner_face_baseline"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    fun isOwnerFaceEnrolled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_OWNER_FACE_ENROLLED, false)
+    }
+
+    fun setOwnerFaceEnrolled(context: Context, enrolled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_OWNER_FACE_ENROLLED, enrolled).apply()
+    }
+
+    fun getOwnerFaceSamplesCount(context: Context): Int {
+        return getPrefs(context).getInt(KEY_OWNER_FACE_COUNT, 0)
+    }
+
+    fun setOwnerFaceSamplesCount(context: Context, count: Int) {
+        getPrefs(context).edit().putInt(KEY_OWNER_FACE_COUNT, count).apply()
+    }
+
+    fun getOwnerFaceBaseline(context: Context): String? {
+        return getPrefs(context).getString(KEY_OWNER_FACE_BASELINE, null)
+    }
+
+    fun setOwnerFaceBaseline(context: Context, baseline: String?) {
+        getPrefs(context).edit().putString(KEY_OWNER_FACE_BASELINE, baseline).apply()
+    }
+
+    fun clearOwnerFace(context: Context) {
+        getPrefs(context).edit()
+            .remove(KEY_OWNER_FACE_ENROLLED)
+            .remove(KEY_OWNER_FACE_COUNT)
+            .remove(KEY_OWNER_FACE_BASELINE)
+            .apply()
     }
 
     fun getAlarmSoundType(context: Context): AlarmSoundType {

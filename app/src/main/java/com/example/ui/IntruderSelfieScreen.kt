@@ -36,6 +36,9 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.camera.view.PreviewView
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -439,6 +442,151 @@ fun IntruderSelfieScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        // LIVE CAMERA PREVIEW & FACE VERIFICATION CARD (BUG 4)
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = NavyDark),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp)
+                .testTag("card_camera_preview_vault")
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, tint = YellowAccent)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Front Camera Preview & AI Scan",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 13.sp
+                        )
+                    }
+                    if (state.faceVerificationStatus != null) {
+                        Text(
+                            text = if (state.faceVerificationStatus?.contains("Owner") == true) "OWNER" else "SCAN",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (state.faceVerificationStatus?.contains("Owner") == true) SafeGreen else YellowAccent
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PreviewView(ctx).also { pv ->
+                                CameraCaptureHelper.bindPreviewView(pv, lifecycleOwner)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Target scanning reticle
+                    Box(
+                        modifier = Modifier
+                            .size(120.dp)
+                            .border(
+                                2.dp,
+                                if (state.faceVerificationStatus?.contains("Owner") == true) SafeGreen else YellowAccent,
+                                CircleShape
+                            )
+                    )
+                }
+
+                if (state.faceVerificationStatus != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = state.faceVerificationStatus ?: "",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (state.faceVerificationStatus?.contains("Owner") == true) SafeGreen else YellowAccent,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Button(
+                        onClick = {
+                            CameraCaptureHelper.captureFrameBitmap(context, lifecycleOwner) { bmp ->
+                                viewModel.verifyFaceFromBitmap(bmp)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = YellowAccent,
+                            contentColor = NavyDark
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .testTag("btn_verify_face")
+                    ) {
+                        Icon(Icons.Default.Face, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("VERIFY FACE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            CameraCaptureHelper.takeFrontCameraPhotoSilent(
+                                context = context,
+                                lifecycleOwner = lifecycleOwner,
+                                onPhotoSaved = { savedPath ->
+                                    viewModel.onPhotoCaptured(savedPath, isManualTest = true)
+                                },
+                                onError = {
+                                    val bmp = CameraCaptureHelper.generateEvidenceSnapshotBitmap(
+                                        "SILENT EVIDENCE SNAPSHOT",
+                                        "Captured from Intruder Vault Screen"
+                                    )
+                                    val saved = CameraCaptureHelper.saveBitmapToFile(context, bmp, "SILENT")
+                                    if (saved != null) {
+                                        viewModel.onPhotoCaptured(saved, isManualTest = true)
+                                    }
+                                }
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AlertRed,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .testTag("btn_silent_photo_vault")
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("CAPTURE PHOTO", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
 
         // LATEST CAPTURED PHOTO PREVIEW CARD
         state.lastCapturedPhotoPath?.let { photoPath ->

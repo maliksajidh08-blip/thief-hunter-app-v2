@@ -236,11 +236,7 @@ fun QuickActionsWidget(
                 // BUTTON 2: STOP ALARM / DISARM
                 Button(
                     onClick = {
-                        if (isRinging) {
-                            viewModel.stopSiren()
-                        } else if (isArmed) {
-                            viewModel.toggleSystemArm()
-                        }
+                        viewModel.stopAlarmCompletely()
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isRinging) AlertRed else Color(0xFF2A3464),

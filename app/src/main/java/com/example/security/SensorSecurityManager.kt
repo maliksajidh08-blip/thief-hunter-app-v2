@@ -115,6 +115,7 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
     private var locationCallback: LocationCallback? = null
 
     var onTriggerAlarm: ((TriggerReason) -> Unit)? = null
+    var onPhoneLifted: (() -> Unit)? = null
 
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
@@ -365,7 +366,11 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                                     }
                                 }
                                 if (shouldTrigger) {
-                                    fireTrigger(TriggerReason.MOTION_DETECTED)
+                                    if (isUpwardLift && onPhoneLifted != null) {
+                                        onPhoneLifted?.invoke()
+                                    } else {
+                                        fireTrigger(TriggerReason.MOTION_DETECTED)
+                                    }
                                 }
                             }
                         }

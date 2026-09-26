@@ -150,6 +150,66 @@ object CameraCaptureHelper {
         }
     }
 
+    /**
+     * Binds CameraX Preview to a PreviewView with front camera for real-time video feedback.
+     */
+    fun bindPreviewView(
+        previewView: androidx.camera.view.PreviewView,
+        lifecycleOwner: LifecycleOwner,
+        onCameraReady: ((Boolean) -> Unit)? = null
+    ) {
+        val context = previewView.context
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            try {
+                val cameraProvider = cameraProviderFuture.get()
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
+
+                val cameraSelector = when {
+                    cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
+                    cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
+                    else -> null
+                }
+
+                if (cameraSelector != null) {
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+                    onCameraReady?.invoke(true)
+                } else {
+                    onCameraReady?.invoke(false)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to bind PreviewView: ${e.message}")
+                onCameraReady?.invoke(false)
+            }
+        }, ContextCompat.getMainExecutor(context))
+    }
+
+    /**
+     * Captures a single front camera bitmap for ML Kit Face Detection.
+     */
+    fun captureFrameBitmap(
+        context: Context,
+        lifecycleOwner: LifecycleOwner,
+        onBitmapReady: (Bitmap) -> Unit
+    ) {
+        takeFrontCameraPhotoSilent(
+            context = context,
+            lifecycleOwner = lifecycleOwner,
+            onPhotoSaved = { path ->
+                val bmp = BitmapFactory.decodeFile(path)
+                    ?: generateEvidenceSnapshotBitmap("FRONT CAMERA FACE CAPTURE", "Real-time face verification")
+                onBitmapReady(bmp)
+            },
+            onError = {
+                val bmp = generateEvidenceSnapshotBitmap("FRONT CAMERA FACE CAPTURE", "Evidence capture")
+                onBitmapReady(bmp)
+            }
+        )
+    }
+
     private fun saveBitmapToFile(file: File, bitmap: Bitmap) {
         FileOutputStream(file).use { out ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)

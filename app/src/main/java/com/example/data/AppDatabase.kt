@@ -128,15 +128,45 @@ interface LocationHistoryDao {
     suspend fun clearHistory()
 }
 
+@Entity(tableName = "owner_face_samples")
+data class OwnerFaceSampleEntity(
+    @PrimaryKey val id: String,
+    val sampleIndex: Int,
+    val photoUri: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val featureMetrics: String = ""
+)
+
+@Dao
+interface OwnerFaceDao {
+    @Query("SELECT * FROM owner_face_samples ORDER BY sampleIndex ASC")
+    fun getAllSamples(): Flow<List<OwnerFaceSampleEntity>>
+
+    @Query("SELECT COUNT(*) FROM owner_face_samples")
+    suspend fun getSampleCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(samples: List<OwnerFaceSampleEntity>)
+
+    @Query("DELETE FROM owner_face_samples")
+    suspend fun clearAll()
+}
+
 @Database(
-    entities = [FamilyDeviceEntity::class, IntruderCaptureEntity::class, LocationHistoryEntity::class],
-    version = 2,
+    entities = [
+        FamilyDeviceEntity::class,
+        IntruderCaptureEntity::class,
+        LocationHistoryEntity::class,
+        OwnerFaceSampleEntity::class
+    ],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun familyDeviceDao(): FamilyDeviceDao
     abstract fun intruderCaptureDao(): IntruderCaptureDao
     abstract fun locationHistoryDao(): LocationHistoryDao
+    abstract fun ownerFaceDao(): OwnerFaceDao
 
     companion object {
         @Volatile

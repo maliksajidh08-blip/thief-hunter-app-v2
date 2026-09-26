@@ -47,12 +47,14 @@ class ThiefGuardService : Service() {
         locationTracker = OfflineLocationTrackerEngine(this, scope)
 
         sensorManager.onTriggerAlarm = { reason ->
-            sirenEngine.startSiren(reason.patternKey)
-            notificationHelper.showTriggerNotification(
-                reason.title,
-                "Security perimeter breached: ${reason.title} at ${System.currentTimeMillis()}"
-            )
-            locationTracker.setDeviceStolen(true)
+            if (sensorManager.isArmed.value) {
+                sirenEngine.startSiren(reason.patternKey)
+                notificationHelper.showTriggerNotification(
+                    reason.title,
+                    "Security alert: ${reason.title}. Master PIN required to disarm."
+                )
+                locationTracker.setDeviceStolen(true)
+            }
         }
 
         // Start Foreground Service notification immediately
@@ -92,8 +94,10 @@ class ThiefGuardService : Service() {
 
     fun disarmAndStopAlarm() {
         sirenEngine.stopSiren()
+        AlarmSirenEngine.haltAllSirens(this)
         notificationHelper.cancelTriggerNotification()
         sensorManager.disarmSystem()
+        sensorManager.clearTrigger()
     }
 
     private fun stopForegroundGuard() {

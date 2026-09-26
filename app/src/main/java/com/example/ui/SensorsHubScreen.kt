@@ -40,7 +40,17 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.layout.ContentScale
+import androidx.camera.view.PreviewView
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import coil.compose.AsyncImage
+import com.example.security.CameraCaptureHelper
+import java.io.File
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -89,6 +99,8 @@ fun SensorsHubScreen(
     val state by viewModel.uiState.collectAsState()
     val tele = state.sensorTelemetry
     val scrollState = rememberScrollState()
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     var showPinDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
@@ -178,7 +190,42 @@ fun SensorsHubScreen(
                     modifier = Modifier.padding(top = 4.dp, bottom = 14.dp)
                 )
 
-                if (state.isSirenPlaying || state.isSystemArmed) {
+                if (state.isSirenPlaying) {
+                    Button(
+                        onClick = { viewModel.stopAlarmCompletely() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = YellowAccent,
+                            contentColor = NavyDark
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("btn_stop_alarm")
+                    ) {
+                        Icon(imageVector = Icons.Default.VolumeOff, contentDescription = null, tint = AlertRed)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("STOP ALARM", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = AlertRed)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = { showPinDialog = true },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("btn_disarm_pin")
+                    ) {
+                        Icon(imageVector = Icons.Default.LockOpen, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("DISARM WITH MASTER PIN", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                } else if (state.isSystemArmed) {
                     Button(
                         onClick = { showPinDialog = true },
                         colors = ButtonDefaults.buttonColors(
@@ -211,6 +258,190 @@ fun SensorsHubScreen(
                         Icon(imageVector = Icons.Default.Shield, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("ARM ALL SENSORS NOW", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+
+        // LIVE CAMERA PREVIEW ON ALARM (BUG 4)
+        if (state.isSirenPlaying || state.isCameraPreviewActive) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = NavyDark),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(2.dp, AlertRed, RoundedCornerShape(16.dp))
+                    .testTag("card_live_camera_alarm")
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, tint = AlertRed)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "LIVE CAMERA FEED & FACE SCAN",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 13.sp
+                            )
+                        }
+                        if (state.faceVerificationStatus != null) {
+                            Text(
+                                text = if (state.faceVerificationStatus?.contains("Owner") == true) "MATCH" else "SCANNING",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (state.faceVerificationStatus?.contains("Owner") == true) SafeGreen else YellowAccent
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(190.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AndroidView(
+                            factory = { ctx ->
+                                PreviewView(ctx).also { pv ->
+                                    CameraCaptureHelper.bindPreviewView(pv, lifecycleOwner)
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        // Circular face target reticle
+                        Box(
+                            modifier = Modifier
+                                .size(130.dp)
+                                .border(
+                                    2.dp,
+                                    if (state.faceVerificationStatus?.contains("Owner") == true) SafeGreen else YellowAccent,
+                                    CircleShape
+                                )
+                        )
+                    }
+
+                    if (state.faceVerificationStatus != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = state.faceVerificationStatus ?: "",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (state.faceVerificationStatus?.contains("Owner") == true) SafeGreen else YellowAccent,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Button(
+                            onClick = {
+                                CameraCaptureHelper.captureFrameBitmap(context, lifecycleOwner) { bmp ->
+                                    viewModel.verifyFaceFromBitmap(bmp)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = YellowAccent,
+                                contentColor = NavyDark
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .testTag("btn_verify_face_alarm")
+                        ) {
+                            Icon(Icons.Default.Face, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("VERIFY FACE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.recordIntruderCapture("Live Alarm Manual Snapshot")
+                                viewModel.showMessage("Intruder photo logged to Vault!")
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AlertRed,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .testTag("btn_capture_silent_photo")
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("CAPTURE PHOTO", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // LATEST EVIDENCE PHOTO CARD
+        if (state.lastCapturedPhotoPath != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("card_latest_evidence")
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(NavyDark)
+                    ) {
+                        AsyncImage(
+                            model = File(state.lastCapturedPhotoPath ?: ""),
+                            contentDescription = "Last captured intruder photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Latest Intruder Evidence",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = state.lastCapturedTimestamp ?: "Just now",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Logged silently in Vault with timestamp",
+                            fontSize = 11.sp,
+                            color = AlertRed,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }

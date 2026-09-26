@@ -59,7 +59,7 @@ class SecurityNotificationHelper(private val context: Context) {
 
         return NotificationCompat.Builder(context, CHANNEL_GUARD_SERVICE)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Thief Hunter • Security Guard Active")
+            .setContentTitle("Thief Hunter Guard • Protection Active")
             .setContentText(statusText)
             .setSubText("$activeSensorsCount Sensors Armed")
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -83,11 +83,11 @@ class SecurityNotificationHelper(private val context: Context) {
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("⚠️ THEFT ALERT: $triggerTitle")
             .setContentText(triggerDetails)
-            .setStyle(NotificationCompat.BigTextStyle().bigText("$triggerDetails. Master PIN required to disarm alarm."))
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$triggerDetails. Enter Master PIN to disarm."))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setAutoCancel(false)
-            .setOngoing(true)
+            .setAutoCancel(true)
+            .setOngoing(false)
             .setContentIntent(pendingIntent)
             .build()
 
@@ -95,7 +95,9 @@ class SecurityNotificationHelper(private val context: Context) {
     }
 
     fun cancelTriggerNotification() {
-        notificationManager.cancel(ALARM_NOTIFICATION_ID)
+        try {
+            notificationManager.cancel(ALARM_NOTIFICATION_ID)
+        } catch (_: Exception) {}
     }
 
     companion object {

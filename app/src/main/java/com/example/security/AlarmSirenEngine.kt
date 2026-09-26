@@ -5,52 +5,117 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.media.MediaPlayer
 import android.os.Build
-import android.os.CombinedVibration
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
+import com.example.data.AlarmSoundType
+import com.example.data.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import com.example.data.AlarmSoundType
-import com.example.data.AppPreferences
+import java.io.File
+import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.exp
 import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * High-decibel audio synthesizer & alternating frequency siren generator
- * accompanied by distinct emergency vibration patterns.
- * Supports: Police Siren, Dog Barking, Gun Shot, Standard Beep, Custom Sound.
+ * Emergency Alarm Engine with 5 Distinct Sounds:
+ * 1. Police Siren (Default)
+ * 2. Dog Barking
+ * 3. Gun Shot
+ * 4. Standard Beep
+ * 5. Custom Sound
+ *
+ * Uses native MediaPlayer with synthesized high-decibel WAV audio files
+ * backed by robust AudioTrack fallback and synchronized multi-pattern haptics.
  */
 class AlarmSirenEngine(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.Default)
-    private var sirenJob: Job? = null
     private var vibrationJob: Job? = null
     private var audioTrack: AudioTrack? = null
+    private var mediaPlayer: MediaPlayer? = null
 
     @Volatile
     var isRinging: Boolean = false
         private set
+
+    companion object {
+        private const val TAG = "AlarmSirenEngine"
+        private val activeInstances = mutableSetOf<AlarmSirenEngine>()
+        private var globalMediaPlayer: MediaPlayer? = null
+
+        /**
+         * Global emergency halt: completely silences any ringing siren in the process.
+         */
+        @Synchronized
+        fun haltAllSirens(context: Context) {
+            try {
+                globalMediaPlayer?.apply {
+                    if (isPlaying) stop()
+                    release()
+                }
+            } catch (_: Exception) {}
+            globalMediaPlayer = null
+
+            activeInstances.toList().forEach { engine ->
+                try {
+                    engine.stopSiren()
+                } catch (_: Exception) {}
+            }
+
+            try {
+                val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                    vm?.defaultVibrator
+                } else {
+                    @Suppress("DEPRECATION")
+                    context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                }
+                vibrator?.cancel()
+            } catch (_: Exception) {}
+        }
+    }
+
+    init {
+        synchronized(activeInstances) {
+            activeInstances.add(this)
+        }
+    }
 
     fun startSiren(vibrationPattern: String = "EMERGENCY_ALARM", soundType: AlarmSoundType? = null) {
         if (isRinging) return
         isRinging = true
 
         val selectedSound = soundType ?: AppPreferences.getAlarmSoundType(context)
-        startAudioSiren(selectedSound)
+        Log.i(TAG, "Starting siren with sound: ${selectedSound.displayName}")
+
+        // Maximize alarm stream volume
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            audioManager?.let { am ->
+                val maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                am.setStreamVolume(AudioManager.STREAM_ALARM, maxVolume, 0)
+            }
+        } catch (_: Exception) {}
+
+        playMediaSound(selectedSound)
         startVibrationPattern(vibrationPattern)
     }
 
     fun previewSound(soundType: AlarmSoundType, durationMs: Long = 3500L) {
         stopSiren()
         isRinging = true
-        startAudioSiren(soundType)
+        playMediaSound(soundType)
         startVibrationPattern("EMERGENCY_ALARM")
         scope.launch {
             delay(durationMs)
@@ -60,12 +125,21 @@ class AlarmSirenEngine(private val context: Context) {
         }
     }
 
+    @Synchronized
     fun stopSiren() {
         isRinging = false
-        sirenJob?.cancel()
-        sirenJob = null
         vibrationJob?.cancel()
         vibrationJob = null
+
+        try {
+            mediaPlayer?.apply {
+                if (isPlaying) {
+                    stop()
+                }
+                release()
+            }
+        } catch (_: Exception) {}
+        mediaPlayer = null
 
         try {
             audioTrack?.apply {
@@ -80,22 +154,213 @@ class AlarmSirenEngine(private val context: Context) {
         stopVibrations()
     }
 
-    private fun startAudioSiren(soundType: AlarmSoundType) {
-        sirenJob = scope.launch {
-            val sampleRate = 44100
-            val minBufferSize = AudioTrack.getMinBufferSize(
+    private fun playMediaSound(soundType: AlarmSoundType) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val wavFile = getOrGenerateWavSound(soundType)
+                if (wavFile.exists() && isRinging) {
+                    val mp = MediaPlayer().apply {
+                        setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ALARM)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+                                .build()
+                        )
+                        setDataSource(wavFile.absolutePath)
+                        isLooping = true
+                        setVolume(1.0f, 1.0f)
+                        prepare()
+                        start()
+                    }
+                    synchronized(this@AlarmSirenEngine) {
+                        if (isRinging) {
+                            mediaPlayer = mp
+                            globalMediaPlayer = mp
+                        } else {
+                            mp.stop()
+                            mp.release()
+                        }
+                    }
+                } else if (isRinging) {
+                    playAudioTrackFallback(soundType)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "MediaPlayer failed: ${e.message}, falling back to AudioTrack", e)
+                if (isRinging) {
+                    playAudioTrackFallback(soundType)
+                }
+            }
+        }
+    }
+
+    private fun getOrGenerateWavSound(soundType: AlarmSoundType): File {
+        val soundDir = File(context.cacheDir, "siren_sounds").apply {
+            if (!exists()) mkdirs()
+        }
+        val file = File(soundDir, "${soundType.id}_v2.wav")
+        if (file.exists() && file.length() > 1000) {
+            return file
+        }
+
+        val sampleRate = 22050
+        val durationSeconds = when (soundType) {
+            AlarmSoundType.POLICE_SIREN -> 3
+            AlarmSoundType.DOG_BARKING -> 3
+            AlarmSoundType.GUN_SHOT -> 3
+            AlarmSoundType.STANDARD_BEEP -> 2
+            AlarmSoundType.CUSTOM_SOUND -> 2
+        }
+        val totalSamples = sampleRate * durationSeconds
+        val pcmData = ShortArray(totalSamples)
+
+        when (soundType) {
+            AlarmSoundType.POLICE_SIREN -> {
+                // High-low alternating siren wail (800Hz - 1600Hz, 1.5s period)
+                var phase = 0.0
+                for (i in 0 until totalSamples) {
+                    val t = i.toDouble() / sampleRate
+                    val cyclePos = (t % 1.5) / 1.5
+                    val freq = if (cyclePos < 0.5) {
+                        800.0 + (cyclePos * 2.0) * 800.0
+                    } else {
+                        1600.0 - ((cyclePos - 0.5) * 2.0) * 800.0
+                    }
+                    val angle = 2.0 * Math.PI * freq / sampleRate
+                    phase += angle
+                    if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI
+                    pcmData[i] = (sin(phase) * 32000.0).toInt().toShort()
+                }
+            }
+
+            AlarmSoundType.DOG_BARKING -> {
+                // Aggressive rhythmic canine bark bursts (low pitch down-sweep + rough noise bursts)
+                // Bark pattern: Bark (0.28s), Pause (0.12s), Bark (0.28s), Pause (0.4s)
+                var phase = 0.0
+                for (i in 0 until totalSamples) {
+                    val t = i.toDouble() / sampleRate
+                    val cycleTime = t % 1.0 // 1 second cycle
+                    val inBark1 = cycleTime < 0.28
+                    val inBark2 = cycleTime in 0.40..0.68
+                    if (inBark1 || inBark2) {
+                        val barkT = if (inBark1) cycleTime else (cycleTime - 0.40)
+                        val barkProg = barkT / 0.28
+                        // Pitch sweeps down from 480Hz to 160Hz
+                        val barkFreq = 480.0 - (barkProg * 320.0)
+                        val angle = 2.0 * Math.PI * barkFreq / sampleRate
+                        phase += angle
+                        if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI
+
+                        val env = (1.0 - barkProg) * (if (barkProg < 0.1) barkProg * 10.0 else 1.0)
+                        val noise = Random.nextDouble(-0.35, 0.35)
+                        val tone = sin(phase) * 0.7 + sin(phase * 2.2) * 0.25 + noise
+                        pcmData[i] = (tone * env * 32767.0).toInt().coerceIn(-32767, 32767).toShort()
+                    } else {
+                        pcmData[i] = 0
+                    }
+                }
+            }
+
+            AlarmSoundType.GUN_SHOT -> {
+                // 3 tactical gunshots per 3-second loop with explosive crack & low boom
+                val shotTimes = doubleArrayOf(0.1, 0.9, 1.8)
+                for (i in 0 until totalSamples) {
+                    val t = i.toDouble() / sampleRate
+                    var sampleVal = 0.0
+                    for (shotStart in shotTimes) {
+                        if (t >= shotStart && t < shotStart + 0.6) {
+                            val shotT = t - shotStart
+                            val decay = exp(-shotT * 12.0)
+                            val noise = Random.nextDouble(-1.0, 1.0)
+                            val subBoom = sin(2.0 * Math.PI * 90.0 * shotT) * 0.6
+                            sampleVal += (noise * 0.7 + subBoom) * decay
+                        }
+                    }
+                    pcmData[i] = (sampleVal.coerceIn(-1.0, 1.0) * 32767.0).toInt().toShort()
+                }
+            }
+
+            AlarmSoundType.STANDARD_BEEP -> {
+                // High-decibel piercing alarm beep pulses (2650Hz, 120ms on, 80ms off)
+                var phase = 0.0
+                val angle = 2.0 * Math.PI * 2650.0 / sampleRate
+                for (i in 0 until totalSamples) {
+                    val t = i.toDouble() / sampleRate
+                    val cyclePos = t % 0.22
+                    if (cyclePos < 0.13) {
+                        phase += angle
+                        if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI
+                        pcmData[i] = (sin(phase) * 32767.0).toInt().toShort()
+                    } else {
+                        pcmData[i] = 0
+                    }
+                }
+            }
+
+            AlarmSoundType.CUSTOM_SOUND -> {
+                // Tactical oscillating cyber warble (alternating 1250Hz and 2200Hz at 16Hz)
+                var phase = 0.0
+                for (i in 0 until totalSamples) {
+                    val t = i.toDouble() / sampleRate
+                    val warbleFreq = if (((t * 16.0).toInt() % 2) == 0) 1250.0 else 2200.0
+                    val angle = 2.0 * Math.PI * warbleFreq / sampleRate
+                    phase += angle
+                    if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI
+                    pcmData[i] = (sin(phase) * 32767.0).toInt().toShort()
+                }
+            }
+        }
+
+        writeWavFile(file, pcmData, sampleRate)
+        return file
+    }
+
+    private fun writeWavFile(file: File, pcm: ShortArray, sampleRate: Int) {
+        val totalAudioLen = (pcm.size * 2).toLong()
+        val totalDataLen = totalAudioLen + 36
+        val channels = 1
+        val byteRate = (sampleRate * channels * 2).toLong()
+
+        val header = ByteArray(44)
+        val buf = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
+        buf.put("RIFF".toByteArray())
+        buf.putInt(totalDataLen.toInt())
+        buf.put("WAVE".toByteArray())
+        buf.put("fmt ".toByteArray())
+        buf.putInt(16) // Subchunk1Size
+        buf.putShort(1) // AudioFormat PCM = 1
+        buf.putShort(channels.toShort())
+        buf.putInt(sampleRate)
+        buf.putInt(byteRate.toInt())
+        buf.putShort((channels * 2).toShort())
+        buf.putShort(16) // BitsPerSample
+        buf.put("data".toByteArray())
+        buf.putInt(totalAudioLen.toInt())
+
+        FileOutputStream(file).use { out ->
+            out.write(header)
+            val byteBuf = ByteBuffer.allocate(pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+            for (s in pcm) {
+                byteBuf.putShort(s)
+            }
+            out.write(byteBuf.array())
+        }
+    }
+
+    private fun playAudioTrackFallback(soundType: AlarmSoundType) {
+        try {
+            val sampleRate = 22050
+            val minBuf = AudioTrack.getMinBufferSize(
                 sampleRate,
                 AudioFormat.CHANNEL_OUT_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
-            val bufferSize = (minBufferSize * 2).coerceAtLeast(4096)
-
+            val bufSize = (minBuf * 2).coerceAtLeast(4096)
             val track = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ALARM)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
                         .build()
                 )
                 .setAudioFormat(
@@ -105,132 +370,33 @@ class AlarmSirenEngine(private val context: Context) {
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build()
                 )
-                .setBufferSizeInBytes(bufferSize)
+                .setBufferSizeInBytes(bufSize)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
-            audioTrack = track
-            try {
-                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-                audioManager?.let { am ->
-                    val maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-                    am.setStreamVolume(AudioManager.STREAM_ALARM, maxVolume, 0)
-                }
-
-                track.play()
-                val buffer = ShortArray(bufferSize)
-                var phase = 0.0
-                var sampleIndex = 0L
-
-                var currentFreq = 850.0
-                var targetFreq = 1650.0
-                var sweepUp = true
-
-                while (isActive && isRinging) {
-                    when (soundType) {
-                        AlarmSoundType.POLICE_SIREN -> {
-                            for (i in buffer.indices) {
-                                val angle = 2.0 * Math.PI * currentFreq / sampleRate
-                                buffer[i] = (sin(phase) * 32767.0).toInt().toShort()
-                                phase += angle
-                                if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI
-
-                                if (sweepUp) {
-                                    currentFreq += 0.04
-                                    if (currentFreq >= targetFreq) sweepUp = false
-                                } else {
-                                    currentFreq -= 0.04
-                                    if (currentFreq <= 750.0) sweepUp = true
-                                }
-                            }
-                        }
-
-                        AlarmSoundType.DOG_BARKING -> {
-                            // Synthesize rhythmic canine bark bursts (low pitch down-sweep + rough noise harmonic)
-                            for (i in buffer.indices) {
-                                val timeInCycle = (sampleIndex % (sampleRate * 0.75).toLong()).toDouble() / sampleRate
-                                val sample = if (timeInCycle < 0.28) {
-                                    // Active bark: descending pitch from 480Hz down to 180Hz
-                                    val barkFreq = 480.0 - (timeInCycle / 0.28) * 300.0
-                                    val angle = 2.0 * Math.PI * barkFreq / sampleRate
-                                    phase += angle
-                                    if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI
-                                    
-                                    val env = (1.0 - (timeInCycle / 0.28))
-                                    val tone = sin(phase) * 0.65 + sin(phase * 2.3) * 0.25 + (Random.nextDouble(-0.1, 0.1))
-                                    (tone * env * 32767.0).toInt().coerceIn(-32767, 32767)
-                                } else {
-                                    0
-                                }
-                                buffer[i] = sample.toShort()
-                                sampleIndex++
-                            }
-                        }
-
-                        AlarmSoundType.GUN_SHOT -> {
-                            // Synthesize loud tactical gunshot: transient impulse followed by low explosive rumble decay
-                            for (i in buffer.indices) {
-                                val timeInCycle = (sampleIndex % (sampleRate * 0.9).toLong()).toDouble() / sampleRate
-                                val sample = if (timeInCycle < 0.5) {
-                                    val decay = exp(-timeInCycle * 9.0)
-                                    val blastNoise = Random.nextDouble(-1.0, 1.0)
-                                    val lowBoomAngle = 2.0 * Math.PI * 95.0 * timeInCycle
-                                    val lowBoom = sin(lowBoomAngle) * 0.5
-                                    ((blastNoise * 0.6 + lowBoom) * decay * 32767.0).toInt().coerceIn(-32767, 32767)
-                                } else {
-                                    0
-                                }
-                                buffer[i] = sample.toShort()
-                                sampleIndex++
-                            }
-                        }
-
-                        AlarmSoundType.STANDARD_BEEP -> {
-                            // Piercing standard alert beep pulses (2600Hz, 120ms ON, 70ms OFF)
-                            for (i in buffer.indices) {
-                                val timeInCycle = (sampleIndex % (sampleRate * 0.25).toLong()).toDouble() / sampleRate
-                                val sample = if (timeInCycle < 0.15) {
-                                    val angle = 2.0 * Math.PI * 2700.0 / sampleRate
-                                    phase += angle
-                                    if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI
-                                    (sin(phase) * 32767.0).toInt()
-                                } else {
-                                    0
-                                }
-                                buffer[i] = sample.toShort()
-                                sampleIndex++
-                            }
-                        }
-
-                        AlarmSoundType.CUSTOM_SOUND -> {
-                            // Rapid high-frequency tactical warble alternating between 1400Hz and 2400Hz at 20Hz
-                            for (i in buffer.indices) {
-                                val t = sampleIndex.toDouble() / sampleRate
-                                val warbleRate = 18.0 // 18 times per sec
-                                val warbleFreq = if ((t * warbleRate).toInt() % 2 == 0) 1350.0 else 2300.0
-                                val angle = 2.0 * Math.PI * warbleFreq / sampleRate
-                                phase += angle
-                                if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI
-
-                                buffer[i] = (sin(phase) * 32767.0).toInt().toShort()
-                                sampleIndex++
-                            }
-                        }
-                    }
-
-                    track.write(buffer, 0, buffer.size)
-                }
-            } catch (_: Exception) {
-            } finally {
-                try {
-                    track.stop()
-                    track.release()
-                } catch (_: Exception) {}
+            synchronized(this) {
+                if (!isRinging) return
+                audioTrack = track
             }
-        }
+
+            track.play()
+            val buffer = ShortArray(bufSize)
+            var phase = 0.0
+
+            while (isRinging) {
+                for (i in buffer.indices) {
+                    val angle = 2.0 * Math.PI * 1400.0 / sampleRate
+                    phase += angle
+                    if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI
+                    buffer[i] = (sin(phase) * 32000.0).toInt().toShort()
+                }
+                track.write(buffer, 0, buffer.size)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun startVibrationPattern(patternType: String) {
+        vibrationJob?.cancel()
         vibrationJob = scope.launch {
             val vibrator = getVibrator() ?: return@launch
             val timings = when (patternType) {
@@ -238,12 +404,9 @@ class AlarmSirenEngine(private val context: Context) {
                 "MOTION_DETECTION" -> longArrayOf(0, 250, 100, 250, 100, 250, 400)
                 "CHARGER_UNPLUG" -> longArrayOf(0, 500, 200, 500, 200, 500)
                 "USB_CONNECTION" -> longArrayOf(0, 150, 80, 150, 80, 300)
-                else -> longArrayOf(0, 500, 200, 500, 200, 750, 250) // High urgency
+                else -> longArrayOf(0, 500, 200, 500, 200, 750, 250)
             }
-            val amplitudes = when (patternType) {
-                "POCKET_REMOVAL" -> intArrayOf(0, 255, 0, 255, 0, 255)
-                else -> intArrayOf(0, 255, 0, 255, 0, 255, 0)
-            }
+            val amplitudes = intArrayOf(0, 255, 0, 255, 0, 255, 0)
 
             while (isActive && isRinging) {
                 try {

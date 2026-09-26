@@ -9,6 +9,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material3.LinearProgressIndicator
 import com.example.data.AlarmSoundType
 import com.example.data.Screen
 import com.example.security.ChargerGuardEnvironment
@@ -708,6 +710,145 @@ fun SettingsScreen(
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // 4B. OWNER FACE RECOGNITION TRAINING (BUG 2)
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    1.dp,
+                    if (state.isFaceTrained) SafeGreen.copy(alpha = 0.5f) else YellowAccent.copy(alpha = 0.5f),
+                    RoundedCornerShape(18.dp)
+                )
+                .testTag("card_face_training")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(if (state.isFaceTrained) SafeGreen.copy(alpha = 0.15f) else YellowAccent.copy(alpha = 0.15f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Face,
+                                contentDescription = null,
+                                tint = if (state.isFaceTrained) SafeGreen else NavyPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Train Owner Face",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (state.isFaceTrained) "Face Enrolled (${state.trainedFaceSamplesCount} photos saved in DB)" else "No face enrolled yet",
+                                fontSize = 11.sp,
+                                color = if (state.isFaceTrained) SafeGreen else AlertRed,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "When phone is lifted or touched during sleep, the front camera opens and ML Kit scans the face. If recognized as Owner -> NO ALARM. If stranger -> ALARM & silent intruder photo logged.",
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (state.isFaceTrainingInProgress) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(NavyPrimary.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Enrolling Owner Face: Photo ${state.faceTrainingStep} of 20",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = NavyPrimary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { state.faceTrainingStep / 20f },
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                            color = YellowAccent,
+                            trackColor = NavyPrimary.copy(alpha = 0.2f)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Analyzing biometric angles with ML Kit & saving to local database...",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Button(
+                            onClick = { viewModel.startFaceTraining() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = YellowAccent,
+                                contentColor = NavyDark
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .testTag("btn_train_face")
+                        ) {
+                            Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (state.isFaceTrained) "RE-TRAIN FACE (20 PHOTOS)" else "TRAIN FACE (CAPTURE 20 PHOTOS)",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        if (state.isFaceTrained) {
+                            OutlinedButton(
+                                onClick = { viewModel.clearFaceTraining() },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .height(44.dp)
+                                    .testTag("btn_clear_face")
+                            ) {
+                                Text("Reset", fontSize = 11.sp, color = AlertRed)
                             }
                         }
                     }
