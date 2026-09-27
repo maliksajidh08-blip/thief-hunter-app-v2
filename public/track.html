@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Locate lost or stolen Android phones with live GPS coordinates, offline SMS failover, and remote siren activation in Thief Hunter Guard.">
+  <title>Live Phone Tracker &amp; GPS Locator - Thief Hunter Guard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <header role="banner">
+    <div class="header-inner">
+      <a href="index.html" class="site-logo" aria-label="Thief Hunter Guard Home">
+        <span class="badge-icon" aria-hidden="true">🛡️</span>
+        <span>Thief Hunter Guard</span>
+      </a>
+      <nav aria-label="Main Navigation">
+        <a href="index.html" class="nav-link">Home</a>
+        <a href="features.html" class="nav-link">Features</a>
+        <a href="download.html" class="nav-link">Download</a>
+        <a href="devices.html" class="nav-link">My Devices</a>
+        <a href="track.html" class="nav-link active" aria-current="page">Live Track</a>
+        <a href="community.html" class="nav-link">Community</a>
+        <a href="contact.html" class="nav-link">Contact</a>
+        <a href="download.html" class="nav-cta">Get App APK</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main-content" role="main">
+    <h1>Live GPS Device Locator</h1>
+    <p class="lead">Pinpoint your missing phone in real time or trigger emergency offline SMS tracking commands if data and Wi-Fi have been disabled.</p>
+
+    <div class="grid" style="grid-template-columns: 2fr 1fr;">
+      <article class="card">
+        <h2 class="card-title"><span aria-hidden="true">🗺️</span> Real-Time Position Map</h2>
+        
+        <!-- Accessible Map Canvas Container with High Contrast Indicators -->
+        <div style="background-color: #E2E8F0; border: 2px solid var(--color-border); border-radius: var(--radius); min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; margin-bottom: 1.5rem;" role="region" aria-label="Simulated GPS coordinate map">
+          <div style="background: #1E3A8A; color: #FFFFFF; padding: 0.75rem 1.25rem; border-radius: 9999px; font-weight: 700; margin-bottom: 1rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+            <span aria-hidden="true">📍</span> Coordinates: 23.8103&deg; N, 90.4125&deg; E
+          </div>
+          <p style="color: var(--text-primary); font-weight: 600; margin-bottom: 0.5rem;">Target: Tecno Spark 6 Go (Primary)</p>
+          <p style="color: var(--text-secondary); font-size: 0.875rem;">Accuracy: &plusmn; 4.2 meters &bull; Speed: 0.0 km/h (Stationary) &bull; Battery: 50% (Cool)</p>
+          <a href="https://maps.google.com/?q=23.8103,90.4125" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-top: 1rem;">Open in Google Maps &nearr;</a>
+        </div>
+
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+          <button type="button" class="btn btn-primary" onclick="alert('Sent instant high-precision location request to phone.');">Refresh GPS Ping</button>
+          <button type="button" class="btn btn-danger" onclick="alert('Audible siren triggered on phone at maximum volume.');">Trigger Loud Siren</button>
+          <button type="button" class="btn btn-secondary" onclick="alert('Lock screen activated with owner recovery contact message.');">Remote Lock</button>
+        </div>
+      </article>
+
+      <aside class="card">
+        <h2 class="card-title"><span aria-hidden="true">📡</span> Emergency SMS Fallback</h2>
+        <p>If the device has no internet connection, send an SMS from any authorized phone number to retrieve immediate coordinates:</p>
+        
+        <div style="background-color: var(--color-bg-alt); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--color-border-subtle); margin-bottom: 1rem;">
+          <p style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">Command: Get Location</p>
+          <code style="display: block; background: #FFFFFF; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: 4px; font-weight: 700; color: #1D4ED8;">GUARD LOCATE 1234</code>
+        </div>
+
+        <div style="background-color: var(--color-bg-alt); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--color-border-subtle); margin-bottom: 1rem;">
+          <p style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">Command: Sound Alarm</p>
+          <code style="display: block; background: #FFFFFF; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: 4px; font-weight: 700; color: #1D4ED8;">GUARD SIREN 1234</code>
+        </div>
+
+        <div style="background-color: var(--color-bg-alt); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--color-border-subtle);">
+          <p style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">Command: Remote Lock</p>
+          <code style="display: block; background: #FFFFFF; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: 4px; font-weight: 700; color: #1D4ED8;">GUARD LOCK 1234</code>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <footer role="contentinfo">
+    <div class="footer-inner">
+      <div class="footer-col">
+        <h2>Thief Hunter Guard</h2>
+        <p>Enterprise-grade anti-theft and surveillance protection for Android devices. Keeping mobile devices safe worldwide.</p>
+      </div>
+      <div class="footer-col">
+        <h3>Quick Navigation</h3>
+        <ul class="footer-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="features.html">All Features</a></li>
+          <li><a href="download.html">Download APK</a></li>
+          <li><a href="devices.html">My Registered Mobiles</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h3>Emergency Tools</h3>
+        <ul class="footer-links">
+          <li><a href="track.html">Live GPS Tracker</a></li>
+          <li><a href="report.html">Report Stolen Mobile</a></li>
+          <li><a href="community.html">Safety Community</a></li>
+          <li><a href="contact.html">Customer Support</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h3>Legal &amp; Privacy</h3>
+        <ul class="footer-links">
+          <li><a href="privacy.html">Privacy Policy</a></li>
+          <li><a href="terms.html">Terms of Service</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Thief Hunter Guard. All rights reserved. Meets WCAG 2.1 AA Accessibility Standards.</p>
+      <p><a href="#main-content">Back to Top &uarr;</a></p>
+    </div>
+  </footer>
+</body>
+</html>

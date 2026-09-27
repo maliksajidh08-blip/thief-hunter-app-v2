@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Manage your registered Android phones, check battery and armed status, and trigger remote alarms in Thief Hunter Guard.">
+  <title>My Registered Devices - Thief Hunter Guard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <header role="banner">
+    <div class="header-inner">
+      <a href="index.html" class="site-logo" aria-label="Thief Hunter Guard Home">
+        <span class="badge-icon" aria-hidden="true">🛡️</span>
+        <span>Thief Hunter Guard</span>
+      </a>
+      <nav aria-label="Main Navigation">
+        <a href="index.html" class="nav-link">Home</a>
+        <a href="features.html" class="nav-link">Features</a>
+        <a href="download.html" class="nav-link">Download</a>
+        <a href="devices.html" class="nav-link active" aria-current="page">My Devices</a>
+        <a href="track.html" class="nav-link">Live Track</a>
+        <a href="community.html" class="nav-link">Community</a>
+        <a href="contact.html" class="nav-link">Contact</a>
+        <a href="download.html" class="nav-cta">Get App APK</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main-content" role="main">
+    <h1>My Registered Android Devices</h1>
+    <p class="lead">View real-time protection telemetry, battery modes, and remote security controls for all linked family and personal smartphones.</p>
+
+    <div class="table-responsive">
+      <table aria-label="List of registered devices">
+        <thead>
+          <tr>
+            <th scope="col">Device Name / Model</th>
+            <th scope="col">IMEI Identifier</th>
+            <th scope="col">Security State</th>
+            <th scope="col">Battery &amp; Mode</th>
+            <th scope="col">Last Check-In</th>
+            <th scope="col">Remote Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Tecno Spark 6 Go (2020)</strong><br><span style="font-size: 0.8125rem; color: var(--text-muted);">Primary Mobile</span></td>
+            <td><code>86720104•••••••</code></td>
+            <td><span class="badge badge-success">Armed &bull; Vigilant</span></td>
+            <td>50% 🔋 (Ultra Low)<br><span style="font-size: 0.8125rem; color: var(--color-success-text);">Cool (38&deg;C)</span></td>
+            <td>Just now</td>
+            <td>
+              <a href="track.html" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.875rem;">Locate</a>
+              <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.75rem; font-size: 0.875rem;" onclick="alert('Remote siren trigger signal dispatched.');">Siren</button>
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Samsung Galaxy A12</strong><br><span style="font-size: 0.8125rem; color: var(--text-muted);">Family Device</span></td>
+            <td><code>35812909•••••••</code></td>
+            <td><span class="badge badge-success">Armed &bull; Vigilant</span></td>
+            <td>78% 🔋 (Balanced)<br><span style="font-size: 0.8125rem; color: var(--color-success-text);">Cool (36&deg;C)</span></td>
+            <td>4 mins ago</td>
+            <td>
+              <a href="track.html" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.875rem;">Locate</a>
+              <button type="button" class="btn btn-danger" style="padding: 0.35rem 0.75rem; font-size: 0.875rem;" onclick="alert('Remote siren trigger signal dispatched.');">Siren</button>
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Xiaomi Redmi 9A</strong><br><span style="font-size: 0.8125rem; color: var(--text-muted);">Backup Device</span></td>
+            <td><code>86445005•••••••</code></td>
+            <td><span class="badge badge-warning">Standby &bull; Disarmed</span></td>
+            <td>92% 🔋 (Ultra Low)<br><span style="font-size: 0.8125rem; color: var(--color-success-text);">Cool (35&deg;C)</span></td>
+            <td>28 mins ago</td>
+            <td>
+              <a href="track.html" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.875rem;">Locate</a>
+              <button type="button" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.875rem;" onclick="alert('Device armed remotely.');">Arm</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <section class="card" aria-labelledby="register-device-title" style="margin-top: 2rem;">
+      <h2 id="register-device-title">Link a New Android Device</h2>
+      <p>Enter your phone details or pair automatically by signing in with your registered account within the Thief Hunter Guard mobile app.</p>
+
+      <form action="#" method="POST" onsubmit="event.preventDefault(); alert('Device pairing link generated. Scan in the mobile app.');">
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-top: 0; margin-bottom: 1rem;">
+          <div class="form-group">
+            <label for="device-model">Device Brand &amp; Model</label>
+            <input type="text" id="device-model" name="deviceModel" placeholder="e.g. Tecno Spark 6 Go, Pixel 8" required>
+          </div>
+          <div class="form-group">
+            <label for="device-imei">Device IMEI or Serial Hash</label>
+            <input type="text" id="device-imei" name="deviceImei" placeholder="15-digit IMEI (Dial *#06# on phone)" required>
+          </div>
+          <div class="form-group">
+            <label for="battery-mode-pref">Preferred Power Profile</label>
+            <select id="battery-mode-pref" name="batteryMode">
+              <option value="ultra_low">Ultra Low Power Mode (Budget &amp; Older Phones)</option>
+              <option value="balanced" selected>Balanced Mode (Default)</option>
+              <option value="performance">Performance Mode</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Generate Pairing QR Code</button>
+      </form>
+    </section>
+  </main>
+
+  <footer role="contentinfo">
+    <div class="footer-inner">
+      <div class="footer-col">
+        <h2>Thief Hunter Guard</h2>
+        <p>Enterprise-grade anti-theft and surveillance protection for Android devices. Keeping mobile devices safe worldwide.</p>
+      </div>
+      <div class="footer-col">
+        <h3>Quick Navigation</h3>
+        <ul class="footer-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="features.html">All Features</a></li>
+          <li><a href="download.html">Download APK</a></li>
+          <li><a href="devices.html">My Registered Mobiles</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h3>Emergency Tools</h3>
+        <ul class="footer-links">
+          <li><a href="track.html">Live GPS Tracker</a></li>
+          <li><a href="report.html">Report Stolen Mobile</a></li>
+          <li><a href="community.html">Safety Community</a></li>
+          <li><a href="contact.html">Customer Support</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h3>Legal &amp; Privacy</h3>
+        <ul class="footer-links">
+          <li><a href="privacy.html">Privacy Policy</a></li>
+          <li><a href="terms.html">Terms of Service</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Thief Hunter Guard. All rights reserved. Meets WCAG 2.1 AA Accessibility Standards.</p>
+      <p><a href="#main-content">Back to Top &uarr;</a></p>
+    </div>
+  </footer>
+</body>
+</html>
