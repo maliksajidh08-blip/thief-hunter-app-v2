@@ -65,11 +65,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -104,6 +106,24 @@ fun SensorsHubScreen(
 
     var showPinDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
+    var isCameraPreviewOpen by remember { mutableStateOf(true) }
+    var cameraSecondsRemaining by remember { mutableStateOf(5) }
+
+    LaunchedEffect(state.isSirenPlaying) {
+        if (state.isSirenPlaying) {
+            isCameraPreviewOpen = true
+            cameraSecondsRemaining = 5
+            while (cameraSecondsRemaining > 0) {
+                delay(1000L)
+                cameraSecondsRemaining--
+            }
+            isCameraPreviewOpen = false
+            CameraCaptureHelper.unbindAll(context)
+        } else {
+            isCameraPreviewOpen = false
+            CameraCaptureHelper.unbindAll(context)
+        }
+    }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseColor by infiniteTransition.animateColor(
@@ -305,33 +325,85 @@ fun SensorsHubScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(190.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.Black),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AndroidView(
-                            factory = { ctx ->
-                                PreviewView(ctx).also { pv ->
-                                    CameraCaptureHelper.bindPreviewView(pv, lifecycleOwner)
-                                }
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
-
-                        // Circular face target reticle
+                    if (isCameraPreviewOpen) {
                         Box(
                             modifier = Modifier
-                                .size(130.dp)
-                                .border(
-                                    2.dp,
-                                    if (state.faceVerificationStatus?.contains("Owner") == true) SafeGreen else YellowAccent,
-                                    CircleShape
+                                .fillMaxWidth()
+                                .height(190.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.Black),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AndroidView(
+                                factory = { ctx ->
+                                    PreviewView(ctx).also { pv ->
+                                        CameraCaptureHelper.bindPreviewView(pv, lifecycleOwner)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+
+                            // Circular face target reticle
+                            Box(
+                                modifier = Modifier
+                                    .size(130.dp)
+                                    .border(
+                                        2.dp,
+                                        if (state.faceVerificationStatus?.contains("Owner") == true) SafeGreen else YellowAccent,
+                                        CircleShape
+                                    )
+                            )
+
+                            // 5s Countdown badge
+                            Surface(
+                                color = Color.Black.copy(alpha = 0.7f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                            ) {
+                                Text(
+                                    text = "Auto-closing in ${cameraSecondsRemaining}s ⏱️",
+                                    fontSize = 10.sp,
+                                    color = YellowAccent,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                                 )
-                        )
+                            }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(NavyPrimary.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                .padding(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "📷 Camera Auto-Closed (5s Limit)",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = YellowAccent
+                            )
+                            Text(
+                                text = "Camera sensor closed to prevent phone heating & save battery.",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                            )
+                            Button(
+                                onClick = {
+                                    isCameraPreviewOpen = true
+                                    cameraSecondsRemaining = 5
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = YellowAccent, contentColor = NavyDark),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Text("REOPEN CAMERA (5s)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
 
                     if (state.faceVerificationStatus != null) {

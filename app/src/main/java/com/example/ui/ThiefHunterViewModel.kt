@@ -43,6 +43,9 @@ import com.example.security.ThiefGuardService
 import com.example.security.TriggerReason
 import com.example.security.FaceRecognitionHelper
 import com.example.security.FaceCheckResult
+import com.example.security.BatteryOptimizer
+import com.example.security.BatteryThermalInfo
+import com.example.data.BatteryMode
 import com.example.data.OwnerFaceSampleEntity
 import android.graphics.Bitmap
 import android.util.Log
@@ -87,6 +90,8 @@ data class UiState(
     val faceTrainingStep: Int = 0,
     val faceVerificationStatus: String? = null,
     val isCameraPreviewActive: Boolean = false,
+    val batteryMode: BatteryMode = BatteryMode.BALANCED,
+    val batteryThermalInfo: BatteryThermalInfo = BatteryThermalInfo(),
     val intruderCaptures: List<IntruderCapture> = listOf(
         IntruderCapture(
             id = "cap_1",
@@ -414,6 +419,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     val offlineLocationTracker = OfflineLocationTrackerEngine(application, viewModelScope)
     val autoSleepDetector = AutoSleepDetectorEngine(application, viewModelScope)
     val chargerGuard = ChargerGuard(application, viewModelScope)
+    val batteryOptimizer = BatteryOptimizer.getInstance(application)
     private val db = AppDatabase.getDatabase(application)
     private val locationDao = db.locationHistoryDao()
 
@@ -631,8 +637,38 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
+        viewModelScope.launch {
+            batteryOptimizer.currentMode.collect { mode ->
+                _uiState.update { it.copy(batteryMode = mode) }
+            }
+        }
+
+        viewModelScope.launch {
+            batteryOptimizer.batteryThermalInfo.collect { info ->
+                _uiState.update { it.copy(batteryThermalInfo = info) }
+            }
+        }
+
         // Start Foreground Service automatically
         startForegroundGuardService()
+    }
+
+    fun setBatteryMode(mode: BatteryMode) {
+        batteryOptimizer.setBatteryMode(mode)
+        if (mode != BatteryMode.PERFORMANCE && !_uiState.value.isSystemArmed) {
+            localSensorManager.unregisterSensors()
+        } else if (_uiState.value.isSystemArmed) {
+            localSensorManager.registerSensors()
+        }
+        offlineLocationTracker.refreshTrackingConfig()
+        showMessage("Battery Mode: ${mode.displayName} active")
+    }
+
+    fun runMemoryCleanup() {
+        viewModelScope.launch {
+            val count = batteryOptimizer.runMemoryAndDbCleanup(getApplication())
+            showMessage("Memory & Battery Optimized: $count cache items cleared, RAM freed!")
+        }
     }
 
     fun startForegroundGuardService() {

@@ -124,6 +124,9 @@ interface LocationHistoryDao {
     @Query("DELETE FROM location_history WHERE id = :id")
     suspend fun deleteLocation(id: Long)
 
+    @Query("DELETE FROM location_history WHERE timestamp < :timestamp")
+    suspend fun deleteLocationsOlderThan(timestamp: Long)
+
     @Query("DELETE FROM location_history")
     suspend fun clearHistory()
 }

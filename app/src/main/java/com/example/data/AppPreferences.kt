@@ -14,9 +14,19 @@ object AppPreferences {
     private const val KEY_OWNER_FACE_ENROLLED = "key_owner_face_enrolled"
     private const val KEY_OWNER_FACE_COUNT = "key_owner_face_count"
     private const val KEY_OWNER_FACE_BASELINE = "key_owner_face_baseline"
+    private const val KEY_BATTERY_MODE = "key_battery_mode"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    fun getBatteryMode(context: Context): BatteryMode {
+        val id = getPrefs(context).getString(KEY_BATTERY_MODE, BatteryMode.BALANCED.id)
+        return BatteryMode.values().firstOrNull { it.id == id } ?: BatteryMode.BALANCED
+    }
+
+    fun setBatteryMode(context: Context, mode: BatteryMode) {
+        getPrefs(context).edit().putString(KEY_BATTERY_MODE, mode.id).apply()
     }
 
     fun isOwnerFaceEnrolled(context: Context): Boolean {

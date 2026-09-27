@@ -12,7 +12,9 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material3.LinearProgressIndicator
 import com.example.data.AlarmSoundType
+import com.example.data.BatteryMode
 import com.example.data.Screen
+import java.util.Locale
 import com.example.security.ChargerGuardEnvironment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -118,6 +120,223 @@ fun SettingsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp)
         )
+
+        // 0. EXTREME BATTERY SAVER & THERMAL MANAGEMENT (Tecno Spark 6 Go & Old Phones)
+        val batteryInfo = state.batteryThermalInfo
+        val batteryMode = state.batteryMode
+
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    1.5.dp,
+                    if (batteryMode == BatteryMode.ULTRA_LOW) SafeGreen.copy(alpha = 0.7f) else YellowAccent.copy(alpha = 0.5f),
+                    RoundedCornerShape(18.dp)
+                )
+                .testTag("card_battery_saver")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(SafeGreen.copy(alpha = 0.15f))
+                        ) {
+                            Text("🔋", fontSize = 20.sp)
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Battery Saver",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Extreme optimization for Tecno Spark 6 Go (2020)",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Surface(
+                        color = if (batteryMode == BatteryMode.ULTRA_LOW) SafeGreen.copy(alpha = 0.2f) else YellowAccent.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = batteryMode.shortName.uppercase(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (batteryMode == BatteryMode.ULTRA_LOW) SafeGreen else NavyPrimary,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // [Ultra Low] [Balanced] [Perf] 3-level mode selector
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    BatteryMode.values().forEach { mode ->
+                        val isSelected = batteryMode == mode
+                        val tag = when (mode) {
+                            BatteryMode.ULTRA_LOW -> "btn_mode_ultra_low"
+                            BatteryMode.BALANCED -> "btn_mode_balanced"
+                            BatteryMode.PERFORMANCE -> "btn_mode_perf"
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) {
+                                if (mode == BatteryMode.ULTRA_LOW) SafeGreen else NavyPrimary
+                            } else Color.Transparent,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clickable { viewModel.setBatteryMode(mode) }
+                                .testTag(tag)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(mode.icon, fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = mode.shortName,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Telemetry summary rows matching user diagram:
+                // Current: 50% 🔋
+                // Estimated: 3h 20m ⏱️
+                // Temperature: 38°C 🌡️
+                // Status: Cool ✅
+                Surface(
+                    color = NavyDark.copy(alpha = 0.05f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Current:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${batteryInfo.level}% 🔋", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Estimated:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(batteryInfo.estimatedTimeRemaining, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SafeGreen)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Temperature:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "${String.format(Locale.US, "%.0f°C", batteryInfo.temperatureCelsius)} 🌡️",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (batteryInfo.temperatureCelsius >= 40f) AlertRed else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Status:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                batteryInfo.status,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (batteryInfo.status.contains("Cool")) SafeGreen else AlertRed
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Mode Explanation bullets
+                Text(
+                    text = when (batteryMode) {
+                        BatteryMode.ULTRA_LOW -> "⚡ Ultra Low Mode Active:\n• Sensors read every 5s (when armed only)\n• Night sleep quiet hours (10 PM - 6 AM)\n• GPS off until phone is stolen or alert triggered\n• Camera auto-closes after 5 seconds"
+                        BatteryMode.BALANCED -> "⚖️ Balanced Mode Active:\n• SENSOR_DELAY_NORMAL with 1s throttling\n• GPS every 10 minutes using Balanced Power\n• Event-driven AI on movement\n• Thermal safeguards (>40°C pause heavy tasks)"
+                        BatteryMode.PERFORMANCE -> "🚀 Performance Mode Active:\n• Real-time high-speed sensor sampling\n• 30s continuous GPS location updates\n• Maximum alarm responsiveness"
+                    },
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (batteryInfo.temperatureCelsius >= 40f) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        color = AlertRed.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (batteryInfo.temperatureCelsius >= 45f)
+                                "🛑 Overheating (>45°C): Hardware sensors paused for thermal cooldown."
+                            else
+                                "⚠️ High Temperature (>40°C): Heavy tasks paused to cool down phone.",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AlertRed,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Memory / Cache Cleanup Action Button
+                OutlinedButton(
+                    onClick = { viewModel.runMemoryCleanup() },
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                        .testTag("btn_clean_memory")
+                ) {
+                    Text("🧹 Clean Memory & Trim Cache (Free RAM)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         // 1. ALL 6 SECURITY FEATURES MASTER CONFIGURATION
         Card(

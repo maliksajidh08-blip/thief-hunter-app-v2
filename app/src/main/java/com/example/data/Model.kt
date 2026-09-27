@@ -135,6 +135,36 @@ data class FamilyNetworkState(
     val alerts: List<FamilyAlert> = emptyList()
 )
 
+enum class BatteryMode(
+    val id: String,
+    val displayName: String,
+    val shortName: String,
+    val icon: String,
+    val description: String
+) {
+    ULTRA_LOW(
+        id = "ultra_low",
+        displayName = "Ultra Low Power Mode",
+        shortName = "Ultra Low",
+        icon = "⚡",
+        description = "Extreme battery saver for older phones (Tecno Spark 6 Go). 5s sensor polling, GPS only on theft, night sleep freeze, camera 5s timeout."
+    ),
+    BALANCED(
+        id = "balanced",
+        displayName = "Balanced Mode (Default)",
+        shortName = "Balanced",
+        icon = "⚖️",
+        description = "Optimized protection & battery. SENSOR_DELAY_NORMAL, 10-minute GPS, throttled AI, thermal safeguards."
+    ),
+    PERFORMANCE(
+        id = "performance",
+        displayName = "Performance Mode",
+        shortName = "Perf",
+        icon = "🚀",
+        description = "Maximum vigilance. Fast sensor sampling, continuous motion tracking, 30-second live GPS."
+    )
+}
+
 enum class AlarmSoundType(val id: String, val displayName: String, val icon: String, val description: String) {
     POLICE_SIREN("police_siren", "Police Siren", "🔵", "High-pitch alternating emergency police siren (Default)"),
     DOG_BARKING("dog_barking", "Dog Barking", "🔴", "Aggressive watchdog guarding staccato bark & growl"),

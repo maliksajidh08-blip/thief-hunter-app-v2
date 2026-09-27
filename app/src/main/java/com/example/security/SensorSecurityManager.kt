@@ -81,6 +81,8 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
 
+    val batteryOptimizer = BatteryOptimizer.getInstance(context)
+
     private val scope = CoroutineScope(Dispatchers.Default)
 
     private val _telemetry = MutableStateFlow(SensorTelemetry())
@@ -109,6 +111,8 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
     private var lastAccelZ: Float = 9.8f
     private var lastInclination: Float = 0f
     private var lastSensorTimestamp: Long = 0L
+    private var lastProcessedSampleTimestamp: Long = 0L
+    private var areSensorsRegistered: Boolean = false
     private var currentGuardConfig: GuardConfig = GuardConfig()
 
     private var countdownJob: Job? = null
@@ -158,14 +162,34 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
     init {
         registerSensors()
         registerPowerReceiver()
+        batteryOptimizer.onSensorsThermalShutdown = { shutdown ->
+            if (shutdown) {
+                unregisterSensors()
+            } else if (_isArmed.value) {
+                registerSensors()
+            }
+        }
     }
 
-    private fun registerSensors() {
+    fun registerSensors() {
+        if (areSensorsRegistered) return
+        if (!batteryOptimizer.shouldSensorsBeActive(_isArmed.value)) return
+
+        val delay = batteryOptimizer.getSensorDelay()
         sensorManager?.let { sm ->
-            proximitySensor?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
-            lightSensor?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
-            accelerometer?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+            proximitySensor?.let { sm.registerListener(this, it, delay) }
+            lightSensor?.let { sm.registerListener(this, it, delay) }
+            accelerometer?.let { sm.registerListener(this, it, delay) }
         }
+        areSensorsRegistered = true
+    }
+
+    fun unregisterSensors() {
+        if (!areSensorsRegistered) return
+        try {
+            sensorManager?.unregisterListener(this)
+        } catch (_: Exception) {}
+        areSensorsRegistered = false
     }
 
     private fun registerPowerReceiver() {
@@ -197,6 +221,8 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
             _isArmed.value = true
             _countdownRemaining.value = 0
 
+            registerSensors()
+
             // Snapshot baseline at moment of arming
             initialArmedProximityNear = _telemetry.value.isProximityNear
             initialArmedLight = _telemetry.value.lightLux
@@ -223,6 +249,9 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
         _isArmed.value = false
         _activeTrigger.value = null
         stopGpsTracking()
+        if (batteryOptimizer.currentMode.value != com.example.data.BatteryMode.PERFORMANCE) {
+            unregisterSensors()
+        }
         _telemetry.update {
             it.copy(
                 isInPocket = false,
@@ -244,6 +273,9 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
 
     override fun onSensorChanged(event: SensorEvent?) {
         event ?: return
+        if (batteryOptimizer.batteryThermalInfo.value.areSensorsThermalDisabled) return
+        if (batteryOptimizer.isNightTimeWindow() && batteryOptimizer.currentMode.value == com.example.data.BatteryMode.ULTRA_LOW && !_isArmed.value) return
+
         val now = System.currentTimeMillis()
         when (event.sensor.type) {
             Sensor.TYPE_PROXIMITY -> {
@@ -299,6 +331,15 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                 val total = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
 
                 val deltaFromLast = Math.abs(total - lastTotalAccel)
+
+                // Battery Saver rate limit: In Ultra Low, process accelerometer once every 5 seconds (unless violent grab)
+                val throttleMs = batteryOptimizer.getSensorSampleThrottleMs()
+                val isUrgentSpike = deltaFromLast > 4.5f
+                if (throttleMs > 0 && !isUrgentSpike && (now - lastProcessedSampleTimestamp < throttleMs)) {
+                    return
+                }
+                lastProcessedSampleTimestamp = now
+
                 val liftYDelta = y - lastAccelY
                 val liftZDelta = z - lastAccelZ
 
@@ -389,9 +430,18 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     fun startGpsTracking() {
+        val isStolen = _activeTrigger.value != null
+        val intervalMs = batteryOptimizer.getGpsIntervalMs(isStolen)
+        if (intervalMs < 0) {
+            // Ultra Low Mode: GPS completely off when not stolen
+            stopGpsTracking()
+            return
+        }
+
         try {
-            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000)
-                .setMinUpdateIntervalMillis(1500)
+            val priority = if (isStolen) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY
+            val locationRequest = LocationRequest.Builder(priority, intervalMs)
+                .setMinUpdateIntervalMillis((intervalMs / 2).coerceAtLeast(5000L))
                 .build()
 
             locationCallback = object : LocationCallback() {

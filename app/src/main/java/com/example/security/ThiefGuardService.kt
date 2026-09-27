@@ -29,8 +29,13 @@ class ThiefGuardService : Service() {
         private set
     lateinit var locationTracker: OfflineLocationTrackerEngine
         private set
+    lateinit var batteryOptimizer: BatteryOptimizer
+        private set
 
     private var telemetryCollectJob: Job? = null
+    private var lastNotifBatteryPct: Int = -1
+    private var lastNotifArmedState: Boolean = false
+    private var lastNotifTimeMs: Long = 0L
 
     private val _isServiceRunning = MutableStateFlow(false)
     val isServiceRunning: StateFlow<Boolean> = _isServiceRunning.asStateFlow()
@@ -45,6 +50,7 @@ class ThiefGuardService : Service() {
         sirenEngine = AlarmSirenEngine(this)
         notificationHelper = SecurityNotificationHelper(this)
         locationTracker = OfflineLocationTrackerEngine(this, scope)
+        batteryOptimizer = BatteryOptimizer.getInstance(this)
 
         sensorManager.onTriggerAlarm = { reason ->
             if (sensorManager.isArmed.value) {
@@ -65,13 +71,40 @@ class ThiefGuardService : Service() {
         telemetryCollectJob = scope.launch {
             sensorManager.telemetry.collect { tele ->
                 val armed = sensorManager.isArmed.value
-                val status = if (armed) "Perimeter Guard Armed • Battery ${tele.batteryPct}%" else "Standby Guard Ready"
-                val updatedNotif = notificationHelper.buildForegroundNotification(
-                    activeSensorsCount = if (armed) 6 else 0,
-                    statusText = status
-                )
-                val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-                nm.notify(SecurityNotificationHelper.SERVICE_NOTIFICATION_ID, updatedNotif)
+                val now = System.currentTimeMillis()
+
+                // Battery Saver: Only post notification update if armed state changes, battery changes by >=2%, or 30s elapsed
+                val shouldUpdate = (armed != lastNotifArmedState) ||
+                        (Math.abs(tele.batteryPct - lastNotifBatteryPct) >= 2) ||
+                        (now - lastNotifTimeMs >= 30_000L)
+
+                if (shouldUpdate) {
+                    lastNotifArmedState = armed
+                    lastNotifBatteryPct = tele.batteryPct
+                    lastNotifTimeMs = now
+
+                    val mode = batteryOptimizer.currentMode.value
+                    val night = batteryOptimizer.isNightTimeWindow()
+                    val thermal = batteryOptimizer.batteryThermalInfo.value
+
+                    val status = buildString {
+                        if (armed) {
+                            append("Perimeter Guard Armed • ${tele.batteryPct}%")
+                            if (night) append(" • 🌙 Night Sleep")
+                        } else {
+                            append("Standby Guard Ready • ${tele.batteryPct}%")
+                        }
+                        if (mode == com.example.data.BatteryMode.ULTRA_LOW) append(" • ⚡ Ultra Saver")
+                        if (thermal.isThermalThrottled) append(" • 🌡️ Cooling")
+                    }
+
+                    val updatedNotif = notificationHelper.buildForegroundNotification(
+                        activeSensorsCount = if (armed) 6 else 0,
+                        statusText = status
+                    )
+                    val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+                    nm.notify(SecurityNotificationHelper.SERVICE_NOTIFICATION_ID, updatedNotif)
+                }
             }
         }
     }
@@ -87,6 +120,11 @@ class ThiefGuardService : Service() {
             }
             ACTION_ARM -> {
                 sensorManager.startArmingSequence(0, GuardConfig())
+            }
+            ACTION_OPTIMIZE_BATTERY -> {
+                scope.launch {
+                    batteryOptimizer.runMemoryAndDbCleanup(this@ThiefGuardService)
+                }
             }
         }
         return START_STICKY
@@ -122,5 +160,6 @@ class ThiefGuardService : Service() {
         const val ACTION_STOP_SERVICE = "com.example.security.ACTION_STOP_SERVICE"
         const val ACTION_DISARM = "com.example.security.ACTION_DISARM"
         const val ACTION_ARM = "com.example.security.ACTION_ARM"
+        const val ACTION_OPTIMIZE_BATTERY = "com.example.security.ACTION_OPTIMIZE_BATTERY"
     }
 }

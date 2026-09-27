@@ -49,8 +49,9 @@ class OfflineLocationTrackerEngine(
 ) {
     companion object {
         const val TAG = "OfflineLocationTracker"
-        const val TRACKING_INTERVAL_MS = 30_000L // 30 seconds
-        const val FASTEST_INTERVAL_MS = 15_000L  // 15 seconds
+        const val TRACKING_INTERVAL_BALANCED_MS = 600_000L // 10 minutes (Battery Saver)
+        const val TRACKING_INTERVAL_FAST_MS = 30_000L      // 30 seconds (Performance or Stolen)
+        const val TRACKING_INTERVAL_STOLEN_MS = 15_000L    // 15 seconds (Stolen emergency)
     }
 
     private val db = AppDatabase.getDatabase(context)
@@ -59,6 +60,8 @@ class OfflineLocationTrackerEngine(
         LocationServices.getFusedLocationProviderClient(context)
     private val locationManager =
         context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+
+    val batteryOptimizer = BatteryOptimizer.getInstance(context)
 
     private var trackingJob: Job? = null
     private var locationCallback: LocationCallback? = null
@@ -112,32 +115,56 @@ class OfflineLocationTrackerEngine(
     fun setDeviceStolen(stolen: Boolean) {
         _isDeviceStolen.value = stolen
         if (stolen) {
+            refreshTrackingConfig()
             scope.launch {
                 captureAndProcessLocation(triggerReason = "STOLEN_ALARM", forceSms = true)
             }
+        } else {
+            refreshTrackingConfig()
         }
+    }
+
+    fun refreshTrackingConfig() {
+        stopTracking()
+        startTracking()
     }
 
     @SuppressLint("MissingPermission")
     fun startTracking() {
         if (trackingJob?.isActive == true) return
+
+        val isStolen = _isDeviceStolen.value || _isDeviceFrozen.value
+        val mode = batteryOptimizer.currentMode.value
+
+        // In Ultra Low mode: ONLY GPS WHEN STOLEN or FROZEN
+        if (mode == com.example.data.BatteryMode.ULTRA_LOW && !isStolen) {
+            _isTrackingActive.value = false
+            Log.i(TAG, "Ultra Low Power Mode: GPS tracking paused to save battery (activates on theft only).")
+            return
+        }
+
         _isTrackingActive.value = true
+
+        val intervalMs = when {
+            isStolen -> TRACKING_INTERVAL_STOLEN_MS
+            mode == com.example.data.BatteryMode.BALANCED -> TRACKING_INTERVAL_BALANCED_MS // 10 minutes
+            else -> TRACKING_INTERVAL_FAST_MS // 30 seconds
+        }
+
+        val priority = if (isStolen) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY
 
         // 1. Configure Fused Location with Balanced Power (No battery drain)
         try {
-            val request = LocationRequest.Builder(
-                if (_isDeviceStolen.value) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-                TRACKING_INTERVAL_MS
-            )
-                .setMinUpdateIntervalMillis(FASTEST_INTERVAL_MS)
-                .setMaxUpdateDelayMillis(TRACKING_INTERVAL_MS * 2)
+            val request = LocationRequest.Builder(priority, intervalMs)
+                .setMinUpdateIntervalMillis((intervalMs / 2).coerceAtLeast(5000L))
+                .setMaxUpdateDelayMillis(intervalMs * 2)
                 .build()
 
             locationCallback = object : LocationCallback() {
                 override fun onLocationResult(result: LocationResult) {
                     result.lastLocation?.let { loc ->
                         scope.launch {
-                            handleNewLocation(loc, triggerReason = "PERIODIC_30S")
+                            handleNewLocation(loc, triggerReason = if (isStolen) "STOLEN_TRACKING" else "PERIODIC_GPS")
                         }
                     }
                 }
@@ -167,16 +194,16 @@ class OfflineLocationTrackerEngine(
                 if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                     lm.requestLocationUpdates(
                         LocationManager.GPS_PROVIDER,
-                        TRACKING_INTERVAL_MS,
-                        5f,
+                        intervalMs,
+                        10f,
                         fallbackListener!!,
                         Looper.getMainLooper()
                     )
                 } else if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                     lm.requestLocationUpdates(
                         LocationManager.NETWORK_PROVIDER,
-                        TRACKING_INTERVAL_MS,
-                        10f,
+                        intervalMs,
+                        15f,
                         fallbackListener!!,
                         Looper.getMainLooper()
                     )
@@ -186,11 +213,13 @@ class OfflineLocationTrackerEngine(
             Log.w(TAG, "LocationManager fallback error: ${e.message}")
         }
 
-        // 3. Guaranteed 30-second Coroutine interval (wakes device briefly even if frozen or stationary)
-        trackingJob = scope.launch {
-            while (isActive) {
-                delay(TRACKING_INTERVAL_MS)
-                captureAndProcessLocation(triggerReason = "PERIODIC_30S", forceSms = false)
+        // 3. Periodic Coroutine check (only active when stolen or performance mode)
+        if (isStolen || mode == com.example.data.BatteryMode.PERFORMANCE) {
+            trackingJob = scope.launch {
+                while (isActive) {
+                    delay(intervalMs)
+                    captureAndProcessLocation(triggerReason = "PERIODIC_CHECK", forceSms = false)
+                }
             }
         }
     }

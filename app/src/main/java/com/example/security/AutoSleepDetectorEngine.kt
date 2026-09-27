@@ -74,6 +74,8 @@ class AutoSleepDetectorEngine(
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_SLEEP, Context.MODE_PRIVATE)
 
+    val batteryOptimizer = BatteryOptimizer.getInstance(context)
+
     private val _sleepState = MutableStateFlow(
         AutoSleepState(
             isEnabled = prefs.getBoolean(KEY_SLEEP_ENABLED, true),
@@ -174,7 +176,18 @@ class AutoSleepDetectorEngine(
         tickerJob?.cancel()
         tickerJob = scope.launch {
             while (isActive) {
-                delay(1000L)
+                val mode = batteryOptimizer.currentMode.value
+                val isSleepArmed = _sleepState.value.isSleepArmed
+
+                // AI Optimization: When phone is already sleeping/still, back off loop delay to prevent CPU wakeups
+                val sleepInterval = when {
+                    isSleepArmed -> if (mode == com.example.data.BatteryMode.ULTRA_LOW) 15_000L else 5_000L
+                    mode == com.example.data.BatteryMode.ULTRA_LOW -> 3_000L
+                    mode == com.example.data.BatteryMode.BALANCED -> 2_000L
+                    else -> 1_000L
+                }
+
+                delay(sleepInterval)
                 if (!_sleepState.value.isEnabled) continue
 
                 val isNight = isNightTimeWindow()

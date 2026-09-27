@@ -210,9 +210,21 @@ object CameraCaptureHelper {
         )
     }
 
+    fun unbindAll(context: Context) {
+        try {
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+            cameraProviderFuture.addListener({
+                try {
+                    cameraProviderFuture.get().unbindAll()
+                } catch (_: Exception) {}
+            }, ContextCompat.getMainExecutor(context))
+        } catch (_: Exception) {}
+    }
+
     private fun saveBitmapToFile(file: File, bitmap: Bitmap) {
         FileOutputStream(file).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            // Memory & storage optimization: compress to 75% for low-storage devices
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
         }
     }
 
