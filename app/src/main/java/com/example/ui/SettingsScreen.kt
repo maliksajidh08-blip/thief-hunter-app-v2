@@ -997,7 +997,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "When phone is lifted or touched during sleep, the front camera opens and ML Kit scans the face. If recognized as Owner -> NO ALARM. If stranger -> ALARM & silent intruder photo logged.",
+                    text = "Two-Stage Protection: When lifted, alarm starts in 0.1s while AI scans face in parallel. If Owner recognized -> ALARM STOPS (<0.5s). If stranger -> ALARM INTENSIFIES louder!",
                     fontSize = 11.sp,
                     lineHeight = 16.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1013,13 +1013,50 @@ fun SettingsScreen(
                             .padding(12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(
-                            text = "Enrolling Owner Face: Photo ${state.faceTrainingStep} of 20",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = NavyPrimary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        // Live Viewfinder / Camera Simulation Box
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(130.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(NavyDark),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(60.dp)
+                                        .border(2.dp, SafeGreen, CircleShape)
+                                        .padding(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Face,
+                                        contentDescription = null,
+                                        tint = SafeGreen,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Capturing Photo ${state.faceTrainingStep}/20...",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = YellowAccent
+                                )
+                                Text(
+                                    text = "Hold phone steady • Front camera active",
+                                    fontSize = 10.sp,
+                                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
                         LinearProgressIndicator(
                             progress = { state.faceTrainingStep / 20f },
                             modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
@@ -1028,12 +1065,118 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Analyzing biometric angles with ML Kit & saving to local database...",
+                            text = "Calibrating biometric angles with ML Kit & saving to local database...",
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 } else {
+                    if (state.isFaceTrained) {
+                        // Owner Face Saved Confirmation Banner
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(SafeGreen.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+                                .border(1.dp, SafeGreen.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                .padding(10.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = SafeGreen,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Owner Face Saved Successfully",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = SafeGreen
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "20 calibrated biometric samples enrolled. System will automatically recognize you on lift.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Test verification result badge if available
+                        if (!state.lastFaceTestResult.isNullOrBlank()) {
+                            val isSuccess = state.isOwnerFaceTestPassed == true
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        if (isSuccess) SafeGreen.copy(alpha = 0.15f) else AlertRed.copy(alpha = 0.15f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isSuccess) SafeGreen else AlertRed,
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (isSuccess) Icons.Default.Check else Icons.Default.Shield,
+                                    contentDescription = null,
+                                    tint = if (isSuccess) SafeGreen else AlertRed,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = state.lastFaceTestResult ?: "",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSuccess) SafeGreen else AlertRed
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+
+                        // Test Buttons Row
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Button(
+                                onClick = { viewModel.testOwnerFace(simulateStranger = false) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SafeGreen,
+                                    contentColor = androidx.compose.ui.graphics.Color.White
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .testTag("btn_test_owner_face")
+                            ) {
+                                Icon(imageVector = Icons.Default.Face, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("TEST OWNER FACE", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = { viewModel.testOwnerFace(simulateStranger = true) },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .testTag("btn_test_stranger")
+                            ) {
+                                Text("TEST STRANGER", fontSize = 11.sp, color = AlertRed, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()

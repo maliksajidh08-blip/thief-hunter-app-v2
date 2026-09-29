@@ -407,7 +407,7 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                                     }
                                 }
                                 if (shouldTrigger) {
-                                    if (isUpwardLift && onPhoneLifted != null) {
+                                    if (onPhoneLifted != null) {
                                         onPhoneLifted?.invoke()
                                     } else {
                                         fireTrigger(TriggerReason.MOTION_DETECTED)

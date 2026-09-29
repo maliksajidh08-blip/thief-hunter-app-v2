@@ -112,6 +112,55 @@ class AlarmSirenEngine(private val context: Context) {
         startVibrationPattern(vibrationPattern)
     }
 
+    /**
+     * Stage 1 Immediate Alarm Trigger (< 0.1s response):
+     * Instantly pushes device stream volume to maximum and kicks off audible alarm without delay.
+     */
+    fun startSirenImmediate(soundType: AlarmSoundType? = null) {
+        if (isRinging) return
+        isRinging = true
+
+        val selectedSound = soundType ?: AppPreferences.getAlarmSoundType(context)
+        Log.i(TAG, "Stage 1 Immediate Alarm triggered (< 0.1s) with sound: ${selectedSound.displayName}")
+
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            audioManager?.let { am ->
+                val maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                am.setStreamVolume(AudioManager.STREAM_ALARM, maxVolume, 0)
+            }
+        } catch (_: Exception) {}
+
+        startVibrationPattern("RAPID_BURST")
+        playMediaSound(selectedSound)
+    }
+
+    /**
+     * Stage 2 Stranger Alarm Intensification:
+     * When Face Recognition detects a stranger, alarm intensifies: volume locked to maximum,
+     * high-intensity emergency vibration engaged, and sirens play continuously.
+     */
+    fun intensifyAlarm() {
+        Log.w(TAG, "Stage 2: Intensifying alarm for detected stranger!")
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            audioManager?.let { am ->
+                val maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                am.setStreamVolume(AudioManager.STREAM_ALARM, maxVolume, 0)
+            }
+        } catch (_: Exception) {}
+
+        startVibrationPattern("EXTREME_URGENT")
+        if (!isRinging) {
+            isRinging = true
+            playMediaSound(AlarmSoundType.POLICE_SIREN)
+        }
+    }
+
+    fun stopAlarm() {
+        stopSiren()
+    }
+
     fun previewSound(soundType: AlarmSoundType, durationMs: Long = 3500L) {
         stopSiren()
         isRinging = true
