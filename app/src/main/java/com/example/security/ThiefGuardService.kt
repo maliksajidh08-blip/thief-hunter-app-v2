@@ -68,11 +68,16 @@ class ThiefGuardService : Service() {
         try {
             val notif = notificationHelper.buildForegroundNotification(6, "Thief Hunter is Active • Background Protection & Live Location")
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(
-                    SecurityNotificationHelper.SERVICE_NOTIFICATION_ID,
-                    notif,
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                )
+                try {
+                    startForeground(
+                        SecurityNotificationHelper.SERVICE_NOTIFICATION_ID,
+                        notif,
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    )
+                } catch (se: SecurityException) {
+                    android.util.Log.w("ThiefGuardService", "Fallback startForeground: ${se.message}")
+                    startForeground(SecurityNotificationHelper.SERVICE_NOTIFICATION_ID, notif)
+                }
             } else {
                 startForeground(SecurityNotificationHelper.SERVICE_NOTIFICATION_ID, notif)
             }

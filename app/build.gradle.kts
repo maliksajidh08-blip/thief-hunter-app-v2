@@ -119,6 +119,13 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.play.services.location)
   implementation(libs.mlkit.face.detection)
+  implementation(libs.tensorflow.lite) {
+    exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
+  }
+  implementation(libs.tensorflow.lite.support) {
+    exclude(group = "org.tensorflow", module = "tensorflow-lite-support-api")
+    exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
+  }
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

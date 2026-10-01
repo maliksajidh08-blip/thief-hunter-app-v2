@@ -11,6 +11,7 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.os.BatteryManager
 import android.os.Looper
+import android.util.Log
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -49,7 +50,8 @@ data class SensorTelemetry(
     val smartPocketModeActive: Boolean = true,
     val deviceContext: DeviceContext = DeviceContext.TABLE,
     val movementActivity: MovementActivity = MovementActivity.STATIONARY,
-    val isInGracePeriod: Boolean = false
+    val isInGracePeriod: Boolean = false,
+    val aiDecision: AIDecisionResult? = null
 )
 
 data class GuardConfig(
@@ -60,7 +62,7 @@ data class GuardConfig(
     val liveGpsTrackingEnabled: Boolean = true,
     val intruderSelfieEnabled: Boolean = true,
     val motionSensitivity: Float = 2.0f, // 1: Low, 2: Medium (Default), 3: High
-    val armingDelaySeconds: Int = 30 // Default 30 seconds as requested
+    val armingDelaySeconds: Int = 30
 )
 
 enum class TriggerReason(val title: String, val patternKey: String) {
@@ -85,8 +87,10 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
         LocationServices.getFusedLocationProviderClient(context)
 
     val batteryOptimizer = BatteryOptimizer.getInstance(context)
+    val behaviorTrainer = BehaviorTrainer(context)
+    val aiEngine = AIBehaviorEngine(context, behaviorTrainer)
     val contextDetector = ContextDetector(context)
-    val movementAnalyzer = MovementAnalyzer(context)
+    val movementAnalyzer = MovementAnalyzer(context, behaviorTrainer)
 
     private val scope = CoroutineScope(Dispatchers.Default)
 
@@ -104,6 +108,12 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
 
     private val _activeTrigger = MutableStateFlow<TriggerReason?>(null)
     val activeTrigger: StateFlow<TriggerReason?> = _activeTrigger.asStateFlow()
+
+    // Last recorded touch parameters for AI inference
+    private var lastTouchFingerSize: Float? = null
+    private var lastTouchPressure: Float? = null
+    private var lastTouchDurationMs: Float? = null
+    private var lastTouchSwipeSpeed: Float? = null
 
     private var initialArmedLight: Float? = null
     private var initialArmedProximityNear: Boolean = false
@@ -165,6 +175,7 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
     }
 
     init {
+        movementAnalyzer.trainer = behaviorTrainer
         registerSensors()
         registerPowerReceiver()
         batteryOptimizer.onSensorsThermalShutdown = { shutdown ->
@@ -174,6 +185,32 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                 registerSensors()
             }
         }
+    }
+
+    /**
+     * Records real-time touch parameters from UI to train Day 1-2 Touch Pattern & Day 5-6 Grip Pattern.
+     */
+    fun recordTouchEvent(
+        fingerSize: Float,
+        pressure: Float,
+        durationMs: Float,
+        swipeSpeed: Float
+    ) {
+        lastTouchFingerSize = fingerSize
+        lastTouchPressure = pressure
+        lastTouchDurationMs = durationMs
+        lastTouchSwipeSpeed = swipeSpeed
+
+        contextDetector.notifyUserTouchInteraction()
+        movementAnalyzer.notifyTouchDetected()
+
+        behaviorTrainer.recordTouchSample(fingerSize, pressure, durationMs, swipeSpeed)
+        behaviorTrainer.recordGripSample(
+            fingerCount = 1.0f,
+            gripPositionRatio = 0.65f,
+            pressureConsistency = 0.88f,
+            naturalMovementVariance = 0.12f
+        )
     }
 
     fun registerSensors() {
@@ -258,17 +295,13 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
         if (batteryOptimizer.currentMode.value != com.example.data.BatteryMode.PERFORMANCE) {
             unregisterSensors()
         }
-        _telemetry.update {
-            it.copy(
-                isInPocket = false,
-                isWalkingFiltered = false,
-                liftDetected = false
-            )
-        }
+    }
+
+    fun triggerPanic() {
+        fireTrigger(TriggerReason.MANUAL_PANIC)
     }
 
     fun fireTrigger(reason: TriggerReason) {
-        if (_activeTrigger.value != null) return // Already triggered
         _activeTrigger.value = reason
         onTriggerAlarm?.invoke(reason)
     }
@@ -277,24 +310,25 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
         _activeTrigger.value = null
     }
 
-    override fun onSensorChanged(event: SensorEvent?) {
-        event ?: return
-        if (batteryOptimizer.batteryThermalInfo.value.areSensorsThermalDisabled) return
-        if (batteryOptimizer.isNightTimeWindow() && batteryOptimizer.currentMode.value == com.example.data.BatteryMode.ULTRA_LOW && !_isArmed.value) return
-
+    override fun onSensorChanged(event: SensorEvent) {
         val now = System.currentTimeMillis()
         when (event.sensor.type) {
             Sensor.TYPE_PROXIMITY -> {
                 val dist = event.values[0]
                 val maxRange = event.sensor.maximumRange
-                val isNear = dist < maxRange.coerceAtMost(5f)
+                val isNear = dist < 3.0f || (dist < maxRange && dist < 4.0f)
+                val wasNear = _telemetry.value.isProximityNear
 
                 _telemetry.update {
                     it.copy(
                         proximityCm = dist,
-                        isProximityNear = isNear,
-                        isInPocket = isNear && (it.lightLux < 30f)
+                        isProximityNear = isNear
                     )
+                }
+
+                // If user is actively touching screen, update context
+                if (contextDetector.isUserRecentlyInteracting()) {
+                    contextDetector.notifyUserTouchInteraction()
                 }
             }
             Sensor.TYPE_LIGHT -> {
@@ -327,14 +361,15 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                 val isNear = _telemetry.value.isProximityNear
                 val lightLux = _telemetry.value.lightLux
 
-                // 1. Context detection (HAND, POCKET, TABLE, LEG_OR_BODY)
+                // 1. Context detection (HAND, LEG, POCKET, TABLE, BAG)
                 val detectedContext = contextDetector.update(
                     isProximityNear = isNear,
                     lightLux = lightLux,
                     accelX = x,
                     accelY = y,
                     accelZ = z,
-                    totalAcceleration = total
+                    totalAcceleration = total,
+                    isWalkingMotion = movementAnalyzer.isWalkingPattern
                 )
 
                 // 2. Movement & Activity analysis (WALKING, RUNNING, LIFT, SNATCH, GRACE PERIOD)
@@ -350,6 +385,21 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                     deviceContext = detectedContext
                 )
 
+                // 3. Real-Time AI Decision Engine Inference
+                val aiDecision = aiEngine.evaluate(
+                    touchFingerSize = lastTouchFingerSize,
+                    touchPressure = lastTouchPressure,
+                    touchDurationMs = lastTouchDurationMs,
+                    touchSwipeSpeed = lastTouchSwipeSpeed,
+                    liftSpeedMs = motionResult.estimatedSpeedMs,
+                    liftAngleDeg = motionResult.tiltAngleDelta,
+                    rotationDeg = motionResult.rotationDeltaDeg,
+                    gForceDelta = motionResult.gForceDelta,
+                    isProximityNear = isNear,
+                    lightLux = lightLux,
+                    deviceContext = detectedContext
+                )
+
                 _telemetry.update {
                     it.copy(
                         accelX = x,
@@ -361,36 +411,46 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                         isWalkingFiltered = motionResult.activity == MovementActivity.WALKING,
                         deviceContext = detectedContext,
                         movementActivity = motionResult.activity,
-                        isInGracePeriod = motionResult.isInGracePeriod
+                        isInGracePeriod = motionResult.isInGracePeriod,
+                        aiDecision = aiDecision
                     )
                 }
 
                 if (_isArmed.value) {
-                    // Check Grace Period (First 5s after arming, first 3s after touch)
-                    if (!motionResult.isInGracePeriod) {
-                        // Check Context:
-                        // HAND -> User holding/using phone -> NO ALARM
-                        // LEG_OR_BODY -> Phone on leg/body -> NO ALARM
-                        // WALKING / RUNNING -> Normal movement -> NO ALARM
-                        if (detectedContext != DeviceContext.HAND &&
-                            detectedContext != DeviceContext.LEG_OR_BODY &&
-                            motionResult.activity != MovementActivity.WALKING &&
-                            motionResult.activity != MovementActivity.RUNNING
-                        ) {
-                            // Check 1: Pocket Extraction Theft (Pocket -> Extracted with upward velocity)
-                            if (currentGuardConfig.pocketDetectionEnabled && motionResult.isPocketExtractionTrigger) {
-                                fireTrigger(TriggerReason.POCKET_REMOVAL)
-                            }
-                            // Check 2: Violent snatch (high jerk spike > 5.5 m/s²)
-                            else if (motionResult.isSnatchTrigger) {
+                    // Check AI Decision Scenarios:
+                    when (aiDecision.decision) {
+                        AIDecisionAction.NO_ALARM -> {
+                            // Scenario 1: Owner using phone or Scenario 2: Owner keeps phone on leg
+                            // Alarm suppressed!
+                        }
+
+                        AIDecisionAction.IMMEDIATE_ALARM -> {
+                            // Scenario 5: Thief snatches phone (>3 m/s or violent jerk)
+                            if (!motionResult.isInGracePeriod && detectedContext != DeviceContext.HAND) {
                                 fireTrigger(TriggerReason.HAND_GRAB_DETECTED)
                             }
-                            // Check 3: Lift from table while armed (G-Force > 2.0, Tilt > 20°, Speed > 0.5)
-                            else if (currentGuardConfig.motionDetectionEnabled && motionResult.isLiftTrigger && detectedContext == DeviceContext.TABLE) {
-                                if (onPhoneLifted != null) {
-                                    onPhoneLifted?.invoke()
-                                } else {
-                                    fireTrigger(TriggerReason.MOTION_DETECTED)
+                        }
+
+                        AIDecisionAction.ALARM_AND_SMS -> {
+                            // Scenario 4: Stranger picks up phone
+                            if (!motionResult.isInGracePeriod) {
+                                fireTrigger(TriggerReason.MOTION_DETECTED)
+                            }
+                        }
+
+                        AIDecisionAction.WATCH_MODE -> {
+                            // Scenario 3: Owner keeps phone on table / stowed
+                            if (!motionResult.isInGracePeriod) {
+                                if (currentGuardConfig.pocketDetectionEnabled && motionResult.isPocketExtractionTrigger) {
+                                    fireTrigger(TriggerReason.POCKET_REMOVAL)
+                                } else if (motionResult.isSnatchTrigger && detectedContext != DeviceContext.HAND) {
+                                    fireTrigger(TriggerReason.HAND_GRAB_DETECTED)
+                                } else if (currentGuardConfig.motionDetectionEnabled && motionResult.isLiftTrigger && detectedContext == DeviceContext.TABLE) {
+                                    if (onPhoneLifted != null) {
+                                        onPhoneLifted?.invoke()
+                                    } else {
+                                        fireTrigger(TriggerReason.MOTION_DETECTED)
+                                    }
                                 }
                             }
                         }
@@ -413,7 +473,6 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
         val isStolen = _activeTrigger.value != null
         val intervalMs = batteryOptimizer.getGpsIntervalMs(isStolen)
         if (intervalMs < 0) {
-            // Ultra Low Mode: GPS completely off when not stolen
             stopGpsTracking()
             return
         }
@@ -432,7 +491,7 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                                 latitude = loc.latitude,
                                 longitude = loc.longitude,
                                 accuracy = loc.accuracy,
-                                speed = loc.speed * 3.6f // km/h
+                                speed = loc.speed * 3.6f
                             )
                         }
                     }

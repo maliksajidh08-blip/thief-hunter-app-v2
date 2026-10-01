@@ -45,6 +45,10 @@ import com.example.security.FaceRecognitionHelper
 import com.example.security.FaceCheckResult
 import com.example.security.BatteryOptimizer
 import com.example.security.BatteryThermalInfo
+import com.example.security.OwnerBehaviorProfile
+import com.example.security.AIDecisionResult
+import com.example.security.AIDecisionScenario
+import com.example.security.AIDecisionAction
 import com.example.data.BatteryMode
 import com.example.data.OwnerFaceSampleEntity
 import com.example.data.UserDeviceEntity
@@ -409,7 +413,18 @@ data class UiState(
     val autoSleepState: AutoSleepState = AutoSleepState(),
     val selectedAlarmSound: AlarmSoundType = AlarmSoundType.POLICE_SIREN,
     val isChargerGuardActive: Boolean = false,
-    val chargerGuardState: ChargerGuardState = ChargerGuardState()
+    val chargerGuardState: ChargerGuardState = ChargerGuardState(),
+    val aiProfile: OwnerBehaviorProfile = OwnerBehaviorProfile(),
+    val aiDecision: AIDecisionResult = AIDecisionResult(
+        scenario = AIDecisionScenario.SCENARIO_3_OWNER_ON_TABLE,
+        decision = AIDecisionAction.WATCH_MODE,
+        confidencePct = 95,
+        explanation = "Watch mode active.",
+        touchMatchScore = 1.0f,
+        liftMatchScore = 1.0f,
+        motionSpeedMs = 0f,
+        liftAngleDeg = 0f
+    )
 )
 
 class ThiefHunterViewModel(application: Application) : AndroidViewModel(application) {
@@ -779,6 +794,18 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
+        viewModelScope.launch {
+            localSensorManager.behaviorTrainer.profile.collect { p ->
+                _uiState.update { it.copy(aiProfile = p) }
+            }
+        }
+
+        viewModelScope.launch {
+            localSensorManager.aiEngine.lastDecision.collect { d ->
+                _uiState.update { it.copy(aiDecision = d) }
+            }
+        }
+
         localSensorManager.onPhoneLifted = {
             checkFaceOnPhoneLifted()
         }
@@ -977,6 +1004,30 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
             locationDao.clearHistory()
             showMessage("Location History cleared.")
         }
+    }
+
+    fun startAiLearning() {
+        localSensorManager.behaviorTrainer.startLearning()
+        boundService?.sensorManager?.behaviorTrainer?.startLearning()
+        showMessage("AI Learning active: 7-Day biometric profiling in progress.")
+    }
+
+    fun resetAiLearning() {
+        localSensorManager.behaviorTrainer.resetLearning()
+        boundService?.sensorManager?.behaviorTrainer?.resetLearning()
+        showMessage("AI Learning reset: Baseline cleared back to Day 1.")
+    }
+
+    fun advanceAiLearningDay() {
+        localSensorManager.behaviorTrainer.advanceDayManually()
+        boundService?.sensorManager?.behaviorTrainer?.advanceDayManually()
+        val day = _uiState.value.aiProfile.learningDay
+        showMessage("AI Learning: Advanced to Day $day of 7.")
+    }
+
+    fun recordTouchEvent(fingerSize: Float, pressure: Float, durationMs: Float, swipeSpeed: Float) {
+        localSensorManager.recordTouchEvent(fingerSize, pressure, durationMs, swipeSpeed)
+        boundService?.sensorManager?.recordTouchEvent(fingerSize, pressure, durationMs, swipeSpeed)
     }
 
     private var stolenTrackingJob: Job? = null

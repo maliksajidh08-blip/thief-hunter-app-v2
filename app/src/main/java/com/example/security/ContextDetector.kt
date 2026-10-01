@@ -6,28 +6,36 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.abs
-import kotlin.math.sqrt
 
 /**
- * Physical context of the device to prevent false alarms.
+ * 5 Physical Device Contexts:
+ * 1. HAND (Owner holding)
+ * 2. LEG (On body)
+ * 3. POCKET (In pocket)
+ * 4. TABLE (On table)
+ * 5. BAG (In bag)
  */
 enum class DeviceContext(val displayName: String, val allowsAlarm: Boolean) {
-    HAND("User Holding in Hand", false),
-    POCKET("Inside Pocket / Bag", true),
-    TABLE("Stationary on Table / Desk", true),
-    LEG_OR_BODY("Resting on Leg / Body", false)
+    HAND("Owner Holding (Hand)", false),
+    LEG("Resting on Leg / Body", false),
+    POCKET("Inside Pocket", true),
+    TABLE("Stationary on Table", true),
+    BAG("Inside Bag", true);
+
+    companion object {
+        val LEG_OR_BODY: DeviceContext get() = LEG
+    }
 }
 
 /**
- * ContextDetector combines multiple sensor cues (proximity, ambient light, gravity orientation,
- * and micro-tremor variance) to classify whether the user is actively using the phone,
- * carrying it on their leg/body, resting it on a table, or has it stowed in a pocket.
+ * ContextDetector uses sensor fusion (proximity, ambient light, micro-acceleration variance,
+ * gravity orientation, and touch interaction history) to classify between all 5 contexts.
  */
 class ContextDetector(private val context: Context) {
 
     companion object {
         private const val TAG = "ContextDetector"
-        private const val WINDOW_SIZE = 12
+        private const val WINDOW_SIZE = 14
     }
 
     private val _currentContext = MutableStateFlow(DeviceContext.TABLE)
@@ -38,7 +46,7 @@ class ContextDetector(private val context: Context) {
     private var lastLightLux: Float = 200f
     private var lastContextUpdateTime: Long = 0L
 
-    // Tracks when phone was touched or user began holding it to establish grace periods
+    // Tracks when phone was touched or user began interacting
     private var lastUserInteractionTime: Long = 0L
 
     fun notifyUserTouchInteraction() {
@@ -59,7 +67,8 @@ class ContextDetector(private val context: Context) {
         accelX: Float,
         accelY: Float,
         accelZ: Float,
-        totalAcceleration: Float
+        totalAcceleration: Float,
+        isWalkingMotion: Boolean = false
     ): DeviceContext {
         val now = System.currentTimeMillis()
         lastProximityNear = isProximityNear
@@ -80,59 +89,43 @@ class ContextDetector(private val context: Context) {
 
         val deltaFromGravity = abs(totalAcceleration - 9.8f)
 
-        // Orientation analysis
+        // Orientation analysis (tilt angle relative to flat surface)
         val normZ = (accelZ / totalAcceleration.coerceAtLeast(0.1f)).coerceIn(-1f, 1f)
         val tiltAngleDeg = Math.toDegrees(Math.acos(normZ.toDouble())).toFloat()
 
-        // 1. POCKET DETECTION:
-        // Proximity NEAR (< 3cm) AND Ambient Light DARK (< 30 lux)
-        val isPocketEnvironment = isProximityNear && lightLux < 30f
+        val recentlyInteracted = isUserRecentlyInteracting()
+
+        // 1. HAND (Owner holding):
+        // Proximity: Near or Far, Light: Bright (>20 lux), Motion: Active (variance in 0.03..1.5), Touch: Detected
+        val isHand = recentlyInteracted || (!isProximityNear && lightLux > 20f && variance in 0.03f..1.5f && tiltAngleDeg in 15f..80f)
+
+        // 2. LEG (On body):
+        // Proximity: Near, Light: Medium (10..150 lux), Motion: Gentle (breathing variance 0.01..0.3), Touch: None
+        val isLeg = !recentlyInteracted && isProximityNear && lightLux in 10f..180f && variance in 0.008f..0.35f && tiltAngleDeg in 20f..70f
+
+        // 3. POCKET (In pocket):
+        // Proximity: Near, Light: Dark (<30 lux), Motion: Walking pattern, Touch: None
+        val isPocket = !recentlyInteracted && isProximityNear && lightLux < 30f && (isWalkingMotion || variance in 0.2f..3.5f)
+
+        // 4. BAG (In bag):
+        // Proximity: Near, Light: Dark (<30 lux), Motion: Random / irregular swaying (not rhythmic walking), Touch: None
+        val isBag = !recentlyInteracted && isProximityNear && lightLux < 30f && !isWalkingMotion && (variance in 0.03f..0.8f)
+
+        // 5. TABLE (On table):
+        // Proximity: Far, Light: Bright (>25 lux), Motion: None (variance < 0.02, deltaFromGravity < 0.35), Touch: None
+        val isTable = !recentlyInteracted && !isProximityNear && variance < 0.025f && deltaFromGravity < 0.4f && (tiltAngleDeg < 18f || tiltAngleDeg > 162f)
 
         val detectedContext = when {
-            isPocketEnvironment -> {
-                DeviceContext.POCKET
-            }
-
-            // If recently touched by user (within 3 seconds):
-            isUserRecentlyInteracting() -> {
-                DeviceContext.HAND
-            }
-
-            // 2. HAND DETECTION:
-            // Proximity is FAR, light is visible (> 25 lux).
-            // Human hand holding exhibits characteristic micro-tremors (variance between 0.04 and 1.5),
-            // and typical handheld viewing inclination (20° to 75° tilt).
-            !isProximityNear && lightLux > 20f && variance in 0.03f..1.2f && tiltAngleDeg in 18f..80f -> {
-                DeviceContext.HAND
-            }
-
-            // 3. LEG / BODY DETECTION:
-            // Proximity is far or partially obstructed, light is low/medium (e.g. lap/thigh),
-            // subtle gentle breathing movement or sitting sway (low variance < 0.25),
-            // tilt corresponds to lying on thigh or knee (30° - 60° tilt).
-            // NOT an unauthorized snatch!
-            lightLux < 100f && variance in 0.01f..0.35f && tiltAngleDeg in 25f..65f && deltaFromGravity < 1.0f -> {
-                DeviceContext.LEG_OR_BODY
-            }
-
-            // 4. TABLE DETECTION:
-            // Resting still on flat/hard surface.
-            // Variance is practically zero (< 0.02), total accel is close to 9.8 m/s²,
-            // flat orientation (tilt < 15° or nearly 180° face down).
-            variance < 0.025f && deltaFromGravity < 0.45f && (tiltAngleDeg < 16f || tiltAngleDeg > 165f) -> {
-                DeviceContext.TABLE
-            }
-
-            else -> {
-                // Default based on proximity & light
-                if (isProximityNear && lightLux < 45f) {
-                    DeviceContext.POCKET
-                } else if (!isProximityNear && variance > 0.04f) {
-                    DeviceContext.HAND
-                } else {
-                    _currentContext.value
-                }
-            }
+            isHand -> DeviceContext.HAND
+            isLeg -> DeviceContext.LEG
+            isTable -> DeviceContext.TABLE
+            isPocket -> DeviceContext.POCKET
+            isBag -> DeviceContext.BAG
+            // Fallbacks based on optical & proximity cues
+            isProximityNear && lightLux < 30f -> if (isWalkingMotion) DeviceContext.POCKET else DeviceContext.BAG
+            !isProximityNear && lightLux > 20f && variance > 0.03f -> DeviceContext.HAND
+            !isProximityNear && variance < 0.03f -> DeviceContext.TABLE
+            else -> _currentContext.value
         }
 
         _currentContext.value = detectedContext
@@ -143,13 +136,14 @@ class ContextDetector(private val context: Context) {
     /**
      * Determines whether an alarm is allowed based on the detected context.
      * HAND -> NO ALARM
-     * LEG_OR_BODY -> NO ALARM
-     * TABLE -> Allowed only for confirmed lift
-     * POCKET -> Allowed only for extraction transition or violent snatch
+     * LEG -> NO ALARM
+     * TABLE -> Allowed for unauthorized lift
+     * POCKET -> Allowed for pocket extraction / snatch
+     * BAG -> Allowed for bag snatch
      */
     fun allowsAlarmTrigger(): Boolean {
         if (isUserRecentlyInteracting()) return false
         val ctx = _currentContext.value
-        return ctx == DeviceContext.TABLE || ctx == DeviceContext.POCKET
+        return ctx == DeviceContext.TABLE || ctx == DeviceContext.POCKET || ctx == DeviceContext.BAG
     }
 }

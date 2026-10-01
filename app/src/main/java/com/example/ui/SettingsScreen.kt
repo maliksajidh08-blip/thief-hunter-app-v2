@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -64,6 +65,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import com.example.security.AIDecisionAction
+import com.example.security.AIDecisionScenario
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -98,6 +102,9 @@ fun SettingsScreen(
     val config = state.guardConfig
 
     var pinText by remember(state.masterPin) { mutableStateOf(state.masterPin) }
+    var showProfileDialog by remember { mutableStateOf(false) }
+    val profile = state.aiProfile
+    val aiDecision = state.sensorTelemetry.aiDecision ?: state.aiDecision
 
     Column(
         modifier = modifier
@@ -334,6 +341,356 @@ fun SettingsScreen(
                     Text("🧹 Clean Memory & Trim Cache (Free RAM)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // AI LEARNING CARD (7-Day Owner Behavioral Learning System)
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    1.5.dp,
+                    NavyPrimary.copy(alpha = 0.6f),
+                    RoundedCornerShape(18.dp)
+                )
+                .testTag("card_ai_learning")
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(NavyPrimary.copy(alpha = 0.15f))
+                        ) {
+                            Text("🤖", fontSize = 20.sp)
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "AI Learning",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "7-Day Behavioral Pattern Engine",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Surface(
+                        color = if (profile.learningDay >= 7) SafeGreen.copy(alpha = 0.2f) else YellowAccent.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = if (profile.learningDay >= 7) "Calibrated" else "Day ${profile.learningDay}/7",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (profile.learningDay >= 7) SafeGreen else YellowDark,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Status
+                Text(
+                    text = "Status: ${profile.statusText}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = profile.getDayFocusDescription(),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                )
+
+                // Progress
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Progress",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${(profile.learningProgress * 100).toInt()}%",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { profile.learningProgress.coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = NavyPrimary,
+                    trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Confidence
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Confidence",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${(profile.confidenceScore * 100).toInt()}%",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SafeGreen
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { profile.confidenceScore.coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = SafeGreen,
+                    trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Live AI Decision badge
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Live Scenario: ${aiDecision.scenario.title}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = aiDecision.explanation,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2
+                            )
+                        }
+                        Surface(
+                            color = when (aiDecision.decision) {
+                                AIDecisionAction.NO_ALARM, AIDecisionAction.WATCH_MODE -> SafeGreen.copy(alpha = 0.2f)
+                                else -> AlertRed.copy(alpha = 0.2f)
+                            },
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = aiDecision.decision.label,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = when (aiDecision.decision) {
+                                    AIDecisionAction.NO_ALARM, AIDecisionAction.WATCH_MODE -> SafeGreen
+                                    else -> AlertRed
+                                },
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Action buttons: [Start Learning] [Reset]
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { viewModel.startAiLearning() },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .testTag("btn_start_ai_learning"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary)
+                    ) {
+                        Text("Start Learning", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = { viewModel.resetAiLearning() },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .testTag("btn_reset_ai_learning"),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Reset", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Secondary row: [View Profile] and [Advance Day]
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { showProfileDialog = true },
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .height(38.dp)
+                            .testTag("btn_view_ai_profile"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = YellowAccent)
+                    ) {
+                        Text("👁️ View Profile", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                    }
+
+                    OutlinedButton(
+                        onClick = { viewModel.advanceAiLearningDay() },
+                        modifier = Modifier
+                            .weight(0.8f)
+                            .height(38.dp)
+                            .testTag("btn_advance_ai_day"),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Next Day ⏩", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+
+        // View Profile Dialog
+        if (showProfileDialog) {
+            AlertDialog(
+                onDismissRequest = { showProfileDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🤖 Owner Behavior Profile", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Calibrated parameters after on-device continuous training. AI compares all live phone interactions against this baseline.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        // 1. Touch Pattern (Day 1-2)
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("👆 Day 1-2: Touch Pattern", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyPrimary)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("• Finger Size: ${String.format("%.2f", profile.touchProfile.averageFingerSize)} (contact area)", fontSize = 11.sp)
+                                Text("• Pressure Pattern: ${String.format("%.2f", profile.touchProfile.averagePressure)} (normalized)", fontSize = 11.sp)
+                                Text("• Pressure Variance: ${String.format("%.3f", profile.touchProfile.pressureVariance)}", fontSize = 11.sp)
+                                Text("• Touch Duration: ${profile.touchProfile.averageTouchDurationMs.toInt()} ms", fontSize = 11.sp)
+                                Text("• Swipe Speed: ${profile.touchProfile.averageSwipeSpeed.toInt()} px/s", fontSize = 11.sp)
+                                Text("• Samples: ${profile.touchProfile.sampleCount}", fontSize = 10.sp, color = SafeGreen)
+                            }
+                        }
+
+                        // 2. Lift Pattern (Day 3-4)
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("📱 Day 3-4: Lift Pattern", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyPrimary)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("• Lift Speed: ${String.format("%.2f", profile.liftProfile.averageLiftSpeedMs)} m/s", fontSize = 11.sp)
+                                Text("• Lift Angle: ${String.format("%.1f°", profile.liftProfile.averageLiftAngleDeg)}", fontSize = 11.sp)
+                                Text("• Rotation Pattern: ${String.format("%.1f°", profile.liftProfile.averageRotationDeg)}", fontSize = 11.sp)
+                                Text("• Time to Lift: ${profile.liftProfile.averageTimeToLiftMs.toInt()} ms", fontSize = 11.sp)
+                                Text("• Samples: ${profile.liftProfile.sampleCount}", fontSize = 10.sp, color = SafeGreen)
+                            }
+                        }
+
+                        // 3. Grip Pattern (Day 5-6)
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("🤝 Day 5-6: Grip Pattern", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyPrimary)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("• Finger Count: ${String.format("%.1f", profile.gripProfile.averageFingerCount)} fingers", fontSize = 11.sp)
+                                Text("• Grip Position: ${(profile.gripProfile.gripPositionRatio * 100).toInt()}% screen height", fontSize = 11.sp)
+                                Text("• Pressure Consistency: ${(profile.gripProfile.pressureConsistency * 100).toInt()}%", fontSize = 11.sp)
+                                Text("• Natural Movement: ${String.format("%.3f", profile.gripProfile.naturalMovementVariance)} var", fontSize = 11.sp)
+                                Text("• Samples: ${profile.gripProfile.sampleCount}", fontSize = 10.sp, color = SafeGreen)
+                            }
+                        }
+
+                        // 4. Gait Pattern (Day 7)
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("🚶 Day 7: Gait Pattern", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyPrimary)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("• Step Frequency: ${String.format("%.2f", profile.gaitProfile.averageStepFrequencyHz)} Hz", fontSize = 11.sp)
+                                Text("• Stride Length: ${String.format("%.2f", profile.gaitProfile.strideLengthMeters)} m", fontSize = 11.sp)
+                                Text("• Acceleration Peak: ${String.format("%.2f", profile.gaitProfile.peakAcceleration)} m/s²", fontSize = 11.sp)
+                                Text("• Oscillation Variance: ${String.format("%.3f", profile.gaitProfile.walkingOscillationVariance)}", fontSize = 11.sp)
+                                Text("• Samples: ${profile.gaitProfile.sampleCount}", fontSize = 10.sp, color = SafeGreen)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showProfileDialog = false }) {
+                        Text("Close", fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
         }
 
         Spacer(modifier = Modifier.height(14.dp))

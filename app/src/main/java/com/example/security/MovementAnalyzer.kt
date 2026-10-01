@@ -26,28 +26,29 @@ data class MotionAnalysisResult(
     val isInGracePeriod: Boolean,
     val gForceDelta: Float,
     val tiltAngleDelta: Float,
+    val rotationDeltaDeg: Float,
     val estimatedSpeedMs: Float,
+    val isWalking: Boolean,
     val explanation: String
 )
 
 /**
- * MovementAnalyzer performs intelligent movement analysis, activity recognition,
- * grace period verification, owner movement pattern learning, and sensor fusion transition checks.
+ * MovementAnalyzer:
+ * - Real-time activity classification (Stationary, In-Hand, Walking, Running, Lift, Snatch)
+ * - Gait frequency and step cadence tracking
+ * - Feeds incremental behavioral samples into BehaviorTrainer (Gait Pattern & Lift Pattern)
  */
-class MovementAnalyzer(private val context: Context) {
-
+class MovementAnalyzer(
+    private val context: Context,
+    var trainer: BehaviorTrainer? = null
+) {
     companion object {
         private const val TAG = "MovementAnalyzer"
 
         // Threshold specifications:
-        // G-Force delta minimum 2.0+ m/s² (up from 0.5)
         const val MIN_GFORCE_LIFT_THRESHOLD = 2.0f
-        // Tilt angle delta minimum 20°+ (up from 5°)
         const val MIN_TILT_LIFT_THRESHOLD_DEG = 20.0f
-        // Speed minimum 0.5+ m/s (up from 0.1)
         const val MIN_SPEED_THRESHOLD_MS = 0.5f
-
-        // Violent snatch jerk threshold
         const val SNATCH_JERK_THRESHOLD = 5.5f
 
         // Grace periods:
@@ -71,14 +72,14 @@ class MovementAnalyzer(private val context: Context) {
     // Step / walking oscillation tracking
     private var stepCountWindow = 0
     private var lastPeakTime = 0L
-    private var isWalkingPattern = false
+    var isWalkingPattern: Boolean = false
+        private set
 
     // Historical window for speed calculation
     private val velocityHistory = ArrayDeque<Float>(10)
 
     // Owner learned motion profile
     private var ownerLearnedLiftSpeed: Float = AppPreferences.getOwnerLiftSpeed(context)
-    private var ownerLearnedWalkVariance: Float = AppPreferences.getOwnerWalkVariance(context)
 
     fun notifySystemArmed() {
         armingTimestampMs = System.currentTimeMillis()
@@ -127,7 +128,10 @@ class MovementAnalyzer(private val context: Context) {
         val inclinationDeg = Math.toDegrees(Math.acos(normZ.toDouble())).toFloat()
         val tiltAngleDelta = abs(inclinationDeg - lastInclinationDeg)
 
-        // Estimated linear velocity delta (approx integral of acceleration delta)
+        // Estimated planar rotation delta
+        val rotationDelta = abs(x - lastAccelX) + abs(y - lastAccelY)
+
+        // Estimated linear velocity delta
         val instantaneousSpeed = deltaGravity * dtSec
         if (velocityHistory.size >= 10) {
             velocityHistory.removeFirst()
@@ -142,18 +146,27 @@ class MovementAnalyzer(private val context: Context) {
 
         // 1. Walking / Running Frequency Recognition:
         // Periodic oscillations around 1.5 Hz to 2.5 Hz with moderate amplitude
-        if (deltaTotal in 1.2f..4.0f) {
-            if (now - lastPeakTime in 350L..750L) {
+        if (deltaTotal in 1.1f..4.2f) {
+            val stepInterval = now - lastPeakTime
+            if (stepInterval in 320L..800L) {
                 stepCountWindow++
                 if (stepCountWindow >= 3) {
                     isWalkingPattern = true
+                    // Feed Day 7 Gait sample into BehaviorTrainer
+                    val freqHz = (1000f / stepInterval).coerceIn(1.2f, 3.0f)
+                    trainer?.recordGaitSample(
+                        stepFrequencyHz = freqHz,
+                        strideLengthMeters = 0.74f,
+                        peakAcceleration = totalAccel,
+                        walkingOscillationVariance = deltaTotal * 0.1f
+                    )
                 }
-            } else if (now - lastPeakTime > 1200L) {
+            } else if (stepInterval > 1200L) {
                 stepCountWindow = 0
                 isWalkingPattern = false
             }
             lastPeakTime = now
-        } else if (deltaTotal < 0.8f && (now - lastPeakTime > 1500L)) {
+        } else if (deltaTotal < 0.7f && (now - lastPeakTime > 1500L)) {
             isWalkingPattern = false
             stepCountWindow = 0
         }
@@ -167,12 +180,23 @@ class MovementAnalyzer(private val context: Context) {
             deltaTotal >= SNATCH_JERK_THRESHOLD -> MovementActivity.VIOLENT_SNATCH
 
             // In-hand normal use
-            deviceContext == DeviceContext.HAND || isInTouchGracePeriod() -> MovementActivity.IN_HAND_USE
+            deviceContext == DeviceContext.HAND || isInTouchGracePeriod() -> {
+                // If user is naturally lifting the phone in-hand, record as owner lift profile (Day 3-4)
+                if (estimatedSpeed in 0.3f..2.0f && tiltAngleDelta > 10f) {
+                    trainer?.recordLiftSample(
+                        speedMs = estimatedSpeed,
+                        angleDeg = tiltAngleDelta,
+                        rotationDeg = rotationDelta * 10f,
+                        timeToLiftMs = (dtSec * 1000f).coerceIn(300f, 1500f)
+                    )
+                }
+                MovementActivity.IN_HAND_USE
+            }
 
-            // Walking pattern detected or walking bumps
+            // Walking pattern detected
             isWalkingPattern || (deviceContext == DeviceContext.POCKET && deltaTotal in 0.8f..3.8f) -> MovementActivity.WALKING
 
-            // Big deliberate lift: G-Force > 2.0, Tilt > 20°, Speed > 0.5 m/s
+            // Suspicious lift from table: G-Force > 2.0, Tilt > 20°, Speed > 0.5 m/s
             deltaGravity >= MIN_GFORCE_LIFT_THRESHOLD && tiltAngleDelta >= MIN_TILT_LIFT_THRESHOLD_DEG && estimatedSpeed >= MIN_SPEED_THRESHOLD_MS && isUpwardLiftVector -> {
                 MovementActivity.SUSPICIOUS_LIFT
             }
@@ -187,10 +211,7 @@ class MovementAnalyzer(private val context: Context) {
         }
         _currentActivity.value = activity
 
-        // 3. Sensor Fusion Transition Check:
-        // Proximity NEAR + Light DARK -> POCKET mode
-        // Proximity FAR + Light BRIGHT -> HAND/TABLE mode
-        // Only alarm on clear TRANSITION from POCKET to OUT (NEAR -> FAR + Light spike + Lift acceleration)
+        // 3. Sensor Fusion Transition Check
         val isPocketRemovalTransition = wasProximityNear && !proximityNear &&
                 wasLightLux < 30f && lightLux > 40f &&
                 (deltaGravity > 1.8f || estimatedSpeed > 0.4f)
@@ -207,8 +228,8 @@ class MovementAnalyzer(private val context: Context) {
         val isSnatchTrigger = !inGrace && (deltaTotal >= SNATCH_JERK_THRESHOLD) && (deviceContext != DeviceContext.HAND)
 
         val explanation = buildString {
-            if (inGrace) append("[Grace Period Active] ")
-            append("Activity: ${activity.displayName} | G-Force: ${String.format("%.1f", deltaGravity)} m/s² | Tilt: ${String.format("%.1f", tiltAngleDelta)}° | Speed: ${String.format("%.2f", estimatedSpeed)} m/s")
+            if (inGrace) append("[Grace Active] ")
+            append("${activity.displayName} | Spd: ${String.format("%.2f", estimatedSpeed)}m/s | Tilt: ${String.format("%.1f", tiltAngleDelta)}° | G: ${String.format("%.1f", deltaGravity)}")
         }
 
         // Update tracking states
@@ -227,7 +248,9 @@ class MovementAnalyzer(private val context: Context) {
             isInGracePeriod = inGrace,
             gForceDelta = deltaGravity,
             tiltAngleDelta = tiltAngleDelta,
+            rotationDeltaDeg = rotationDelta * 10f,
             estimatedSpeedMs = estimatedSpeed,
+            isWalking = isWalkingPattern,
             explanation = explanation
         )
     }

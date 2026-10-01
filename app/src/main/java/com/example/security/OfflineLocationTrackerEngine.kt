@@ -129,8 +129,23 @@ class OfflineLocationTrackerEngine(
         startTracking()
     }
 
+    fun hasLocationPermission(): Boolean {
+        return androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+        androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
     @SuppressLint("MissingPermission")
     fun startTracking() {
+        if (!hasLocationPermission()) {
+            Log.i(TAG, "Location permissions not yet granted; tracking will resume when granted.")
+            return
+        }
         if (trackingJob?.isActive == true) return
 
         val isStolen = _isDeviceStolen.value || _isDeviceFrozen.value

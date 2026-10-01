@@ -95,6 +95,39 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: ThiefHunterViewModel by viewModels()
 
+    private var touchDownTimeMs: Long = 0L
+    private var touchDownX: Float = 0f
+    private var touchDownY: Float = 0f
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
+        if (ev != null) {
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    touchDownTimeMs = System.currentTimeMillis()
+                    touchDownX = ev.x
+                    touchDownY = ev.y
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    val duration = (System.currentTimeMillis() - touchDownTimeMs).coerceAtLeast(10L)
+                    val dx = ev.x - touchDownX
+                    val dy = ev.y - touchDownY
+                    val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+                    val speed = (distance / (duration / 1000f)).coerceAtLeast(0f)
+                    val size = ev.size.coerceIn(0.05f, 1.0f)
+                    val pressure = ev.pressure.coerceIn(0.1f, 1.0f)
+
+                    viewModel.recordTouchEvent(
+                        fingerSize = size,
+                        pressure = pressure,
+                        durationMs = duration.toFloat(),
+                        swipeSpeed = speed
+                    )
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
