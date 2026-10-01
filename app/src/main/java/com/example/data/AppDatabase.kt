@@ -155,14 +155,71 @@ interface OwnerFaceDao {
     suspend fun clearAll()
 }
 
+@Entity(tableName = "user_devices")
+data class UserDeviceEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val model: String,
+    val imei: String,
+    val batteryPercent: Int = 95,
+    val isSecured: Boolean = true,
+    val isLocked: Boolean = false,
+    val isSirenPlaying: Boolean = false,
+    val simCardNumber: String = "+92 300 ••••123",
+    val lastSeenAddress: String = "Current Location",
+    val lastSeenTime: String = "Just now",
+    val isStolen: Boolean = false,
+    val stolenTimestamp: String? = null,
+    val emergencyContactPhone: String = "+92 300 4589211",
+    val lastKnownLatitude: Double = 31.5204,
+    val lastKnownLongitude: Double = 74.3587
+)
+
+@Dao
+interface UserDeviceDao {
+    @Query("SELECT * FROM user_devices ORDER BY id ASC")
+    fun getAllDevices(): Flow<List<UserDeviceEntity>>
+
+    @Query("SELECT * FROM user_devices ORDER BY id ASC")
+    suspend fun getAllDevicesOnce(): List<UserDeviceEntity>
+
+    @Query("SELECT * FROM user_devices WHERE id = :deviceId LIMIT 1")
+    suspend fun getDeviceById(deviceId: String): UserDeviceEntity?
+
+    @Query("SELECT * FROM user_devices WHERE imei = :imei LIMIT 1")
+    suspend fun getDeviceByImei(imei: String): UserDeviceEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdate(device: UserDeviceEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(devices: List<UserDeviceEntity>)
+
+    @Query("UPDATE user_devices SET imei = :imei WHERE id = :deviceId")
+    suspend fun updateImei(deviceId: String, imei: String)
+
+    @Query("UPDATE user_devices SET emergencyContactPhone = :phone WHERE id = :deviceId")
+    suspend fun updateEmergencyPhone(deviceId: String, phone: String)
+
+    @Query("UPDATE user_devices SET isLocked = :isLocked, isSecured = :isSecured WHERE id = :deviceId")
+    suspend fun updateLockStatus(deviceId: String, isLocked: Boolean, isSecured: Boolean)
+
+    @Query("UPDATE user_devices SET isSirenPlaying = :isPlaying WHERE id = :deviceId")
+    suspend fun updateSirenStatus(deviceId: String, isPlaying: Boolean)
+
+    @Query("DELETE FROM user_devices WHERE id = :deviceId")
+    suspend fun deleteDevice(deviceId: String)
+}
+
 @Database(
     entities = [
         FamilyDeviceEntity::class,
         IntruderCaptureEntity::class,
         LocationHistoryEntity::class,
-        OwnerFaceSampleEntity::class
+        OwnerFaceSampleEntity::class,
+        UserDeviceEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -170,6 +227,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun intruderCaptureDao(): IntruderCaptureDao
     abstract fun locationHistoryDao(): LocationHistoryDao
     abstract fun ownerFaceDao(): OwnerFaceDao
+    abstract fun userDeviceDao(): UserDeviceDao
 
     companion object {
         @Volatile

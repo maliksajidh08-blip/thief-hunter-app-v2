@@ -46,7 +46,10 @@ data class SensorTelemetry(
     val isInPocket: Boolean = false,
     val isWalkingFiltered: Boolean = false,
     val liftDetected: Boolean = false,
-    val smartPocketModeActive: Boolean = true
+    val smartPocketModeActive: Boolean = true,
+    val deviceContext: DeviceContext = DeviceContext.TABLE,
+    val movementActivity: MovementActivity = MovementActivity.STATIONARY,
+    val isInGracePeriod: Boolean = false
 )
 
 data class GuardConfig(
@@ -82,6 +85,8 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
         LocationServices.getFusedLocationProviderClient(context)
 
     val batteryOptimizer = BatteryOptimizer.getInstance(context)
+    val contextDetector = ContextDetector(context)
+    val movementAnalyzer = MovementAnalyzer(context)
 
     private val scope = CoroutineScope(Dispatchers.Default)
 
@@ -220,6 +225,7 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
             _isArmingCountdown.value = false
             _isArmed.value = true
             _countdownRemaining.value = 0
+            movementAnalyzer.notifySystemArmed()
 
             registerSensors()
 
@@ -282,46 +288,24 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                 val dist = event.values[0]
                 val maxRange = event.sensor.maximumRange
                 val isNear = dist < maxRange.coerceAtMost(5f)
-                val prevNear = _telemetry.value.isProximityNear
 
                 _telemetry.update {
                     it.copy(
                         proximityCm = dist,
                         isProximityNear = isNear,
-                        isInPocket = isNear && (it.lightLux < 45f)
+                        isInPocket = isNear && (it.lightLux < 30f)
                     )
-                }
-
-                if (_isArmed.value) {
-                    // FEATURE 5 & 6 SMART POCKET THEFT DETECTION:
-                    // Phone was inside pocket (baseline near/dark or currently near), now removed (near -> far)
-                    if (prevNear && !isNear) {
-                        val currentLight = _telemetry.value.lightLux
-                        val wasLift = _telemetry.value.liftDetected
-                        if (currentLight > 30f || wasLift) {
-                            fireTrigger(TriggerReason.POCKET_REMOVAL)
-                        } else {
-                            // Sudden proximity shift while in pocket without full sunlight: Hand touch/intrusion at pocket opening
-                            fireTrigger(TriggerReason.HAND_GRAB_DETECTED)
-                        }
-                    }
                 }
             }
             Sensor.TYPE_LIGHT -> {
                 val lux = event.values[0]
-                val prevLight = _telemetry.value.lightLux
                 val isNear = _telemetry.value.isProximityNear
 
                 _telemetry.update {
                     it.copy(
                         lightLux = lux,
-                        isInPocket = isNear && (lux < 45f)
+                        isInPocket = isNear && (lux < 30f)
                     )
-                }
-
-                // If phone was in dark pocket (< 20 lux) and suddenly exposed to ambient light (> 50 lux)
-                if (_isArmed.value && (isNear || wasInPocketAtArming) && prevLight < 20f && lux > 50f) {
-                    fireTrigger(TriggerReason.POCKET_REMOVAL)
                 }
             }
             Sensor.TYPE_ACCELEROMETER -> {
@@ -340,22 +324,31 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                 }
                 lastProcessedSampleTimestamp = now
 
-                val liftYDelta = y - lastAccelY
-                val liftZDelta = z - lastAccelZ
+                val isNear = _telemetry.value.isProximityNear
+                val lightLux = _telemetry.value.lightLux
 
-                // Inclination angle relative to flat rest surface
-                val normZ = (z / total.coerceAtLeast(0.1f)).toDouble().coerceIn(-1.0, 1.0)
-                val inclinationDeg = Math.toDegrees(Math.acos(normZ)).toFloat()
-                val tiltAngleChange = Math.abs(inclinationDeg - lastInclination)
+                // 1. Context detection (HAND, POCKET, TABLE, LEG_OR_BODY)
+                val detectedContext = contextDetector.update(
+                    isProximityNear = isNear,
+                    lightLux = lightLux,
+                    accelX = x,
+                    accelY = y,
+                    accelZ = z,
+                    totalAcceleration = total
+                )
 
-                // Lift detection: physical upward motion along Y/Z combined with tilt angle shift
-                val isUpwardLift = (liftYDelta > 1.8f || Math.abs(liftZDelta) > 2.0f) && (tiltAngleChange > 12f || total > 11.5f)
-
-                // Pure vibration filter (e.g. phone vibration motor, mild table hum, keyboard tapping):
-                // Minimal tilt angle change (< 5 degrees) and modest acceleration delta (< 1.6 m/s²)
-                val isSlightVibration = deltaFromLast < 1.6f && tiltAngleChange < 5.0f
-
-                val isInPocketCurrently = _telemetry.value.isProximityNear && (_telemetry.value.lightLux < 45f)
+                // 2. Movement & Activity analysis (WALKING, RUNNING, LIFT, SNATCH, GRACE PERIOD)
+                val motionResult = movementAnalyzer.analyze(
+                    x = x,
+                    y = y,
+                    z = z,
+                    totalAccel = total,
+                    proximityNear = isNear,
+                    wasProximityNear = initialArmedProximityNear,
+                    lightLux = lightLux,
+                    wasLightLux = initialArmedLight ?: lightLux,
+                    deviceContext = detectedContext
+                )
 
                 _telemetry.update {
                     it.copy(
@@ -363,55 +356,41 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                         accelY = y,
                         accelZ = z,
                         totalAcceleration = total,
-                        liftDetected = isUpwardLift,
-                        isInPocket = isInPocketCurrently,
-                        // Normal walking bumps inside pocket: proximity remains near and light dark, delta is moderate
-                        isWalkingFiltered = isInPocketCurrently && (deltaFromLast in 0.8f..4.0f)
+                        liftDetected = motionResult.isLiftTrigger,
+                        isInPocket = detectedContext == DeviceContext.POCKET,
+                        isWalkingFiltered = motionResult.activity == MovementActivity.WALKING,
+                        deviceContext = detectedContext,
+                        movementActivity = motionResult.activity,
+                        isInGracePeriod = motionResult.isInGracePeriod
                     )
                 }
 
                 if (_isArmed.value) {
-                    if (isInPocketCurrently) {
-                        if (currentGuardConfig.pocketDetectionEnabled) {
-                            // SMART POCKET BEHAVIOR:
-                            // Walking / Jostling inside pocket: NO ALARM! (Filtered)
-                            // Hand snatch / Abrupt violent grab: High jerk spike > 5.5 m/s²
-                            if (deltaFromLast > 5.5f) {
+                    // Check Grace Period (First 5s after arming, first 3s after touch)
+                    if (!motionResult.isInGracePeriod) {
+                        // Check Context:
+                        // HAND -> User holding/using phone -> NO ALARM
+                        // LEG_OR_BODY -> Phone on leg/body -> NO ALARM
+                        // WALKING / RUNNING -> Normal movement -> NO ALARM
+                        if (detectedContext != DeviceContext.HAND &&
+                            detectedContext != DeviceContext.LEG_OR_BODY &&
+                            motionResult.activity != MovementActivity.WALKING &&
+                            motionResult.activity != MovementActivity.RUNNING
+                        ) {
+                            // Check 1: Pocket Extraction Theft (Pocket -> Extracted with upward velocity)
+                            if (currentGuardConfig.pocketDetectionEnabled && motionResult.isPocketExtractionTrigger) {
+                                fireTrigger(TriggerReason.POCKET_REMOVAL)
+                            }
+                            // Check 2: Violent snatch (high jerk spike > 5.5 m/s²)
+                            else if (motionResult.isSnatchTrigger) {
                                 fireTrigger(TriggerReason.HAND_GRAB_DETECTED)
                             }
-                        }
-                    } else {
-                        // Phone is resting on desk/table (out of pocket)
-                        if (currentGuardConfig.motionDetectionEnabled) {
-                            val deltaGravity = Math.abs(total - 9.8f)
-
-                            // SENSITIVITY CONFIGURATION (Low = 1, Medium = 2, High = 3)
-                            // Feature 7 requirement:
-                            // - Low: only big deliberate movements (g-force > 3.5, lift required)
-                            // - Medium (Default): normal lift (g-force > 2.0, lift angle > 20 deg)
-                            // - High: sensitive (g-force > 1.2)
-                            // Filter out slight vibration!
-                            if (!isSlightVibration) {
-                                val shouldTrigger = when {
-                                    currentGuardConfig.motionSensitivity <= 1.5f -> {
-                                        // Low: only big movements with lift angle
-                                        deltaGravity > 3.5f && (isUpwardLift || tiltAngleChange > 25f)
-                                    }
-                                    currentGuardConfig.motionSensitivity <= 2.5f -> {
-                                        // Medium (Default): G-force change > 2.0 with lift or tilt
-                                        deltaGravity > 2.0f && (isUpwardLift || tiltAngleChange > 18f)
-                                    }
-                                    else -> {
-                                        // High: sensitive to general surface movement
-                                        deltaGravity > 1.2f
-                                    }
-                                }
-                                if (shouldTrigger) {
-                                    if (onPhoneLifted != null) {
-                                        onPhoneLifted?.invoke()
-                                    } else {
-                                        fireTrigger(TriggerReason.MOTION_DETECTED)
-                                    }
+                            // Check 3: Lift from table while armed (G-Force > 2.0, Tilt > 20°, Speed > 0.5)
+                            else if (currentGuardConfig.motionDetectionEnabled && motionResult.isLiftTrigger && detectedContext == DeviceContext.TABLE) {
+                                if (onPhoneLifted != null) {
+                                    onPhoneLifted?.invoke()
+                                } else {
+                                    fireTrigger(TriggerReason.MOTION_DETECTED)
                                 }
                             }
                         }
@@ -421,7 +400,8 @@ class SensorSecurityManager(private val context: Context) : SensorEventListener 
                 lastTotalAccel = total
                 lastAccelY = y
                 lastAccelZ = z
-                lastInclination = inclinationDeg
+                val normZ = (z / total.coerceAtLeast(0.1f)).toDouble().coerceIn(-1.0, 1.0)
+                lastInclination = Math.toDegrees(Math.acos(normZ)).toFloat()
                 lastSensorTimestamp = now
             }
         }

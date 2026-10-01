@@ -50,6 +50,7 @@ class ThiefGuardService : Service() {
         sirenEngine = AlarmSirenEngine(this)
         notificationHelper = SecurityNotificationHelper(this)
         locationTracker = OfflineLocationTrackerEngine(this, scope)
+        locationTracker.startTracking()
         batteryOptimizer = BatteryOptimizer.getInstance(this)
 
         sensorManager.onTriggerAlarm = { reason ->
@@ -64,9 +65,22 @@ class ThiefGuardService : Service() {
         }
 
         // Start Foreground Service notification immediately
-        val notif = notificationHelper.buildForegroundNotification(6, "Anti-Theft Shield Armed & Monitoring")
-        startForeground(SecurityNotificationHelper.SERVICE_NOTIFICATION_ID, notif)
-        _isServiceRunning.value = true
+        try {
+            val notif = notificationHelper.buildForegroundNotification(6, "Thief Hunter is Active • Background Protection & Live Location")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    SecurityNotificationHelper.SERVICE_NOTIFICATION_ID,
+                    notif,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(SecurityNotificationHelper.SERVICE_NOTIFICATION_ID, notif)
+            }
+            _isServiceRunning.value = true
+            com.example.data.AppPreferences.setGuardServiceActive(this, true)
+        } catch (e: Exception) {
+            android.util.Log.e("ThiefGuardService", "Failed to startForeground: ${e.message}", e)
+        }
 
         telemetryCollectJob = scope.launch {
             sensorManager.telemetry.collect { tele ->
@@ -112,14 +126,19 @@ class ThiefGuardService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP_SERVICE -> {
+                com.example.data.AppPreferences.setGuardServiceActive(this, false)
                 stopForegroundGuard()
                 stopSelf()
             }
             ACTION_DISARM -> {
+                com.example.data.AppPreferences.setSystemArmed(this, false)
                 disarmAndStopAlarm()
             }
             ACTION_ARM -> {
-                sensorManager.startArmingSequence(0, GuardConfig())
+                com.example.data.AppPreferences.setSystemArmed(this, true)
+                val delay = com.example.data.AppPreferences.getArmingDelaySeconds(this)
+                val sens = com.example.data.AppPreferences.getMotionSensitivity(this)
+                sensorManager.startArmingSequence(delay, GuardConfig(motionSensitivity = sens))
             }
             ACTION_OPTIMIZE_BATTERY -> {
                 scope.launch {
@@ -139,6 +158,7 @@ class ThiefGuardService : Service() {
     }
 
     private fun stopForegroundGuard() {
+        com.example.data.AppPreferences.setGuardServiceActive(this, false)
         _isServiceRunning.value = false
         disarmAndStopAlarm()
         stopForeground(STOP_FOREGROUND_REMOVE)

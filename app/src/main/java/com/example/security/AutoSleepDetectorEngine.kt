@@ -145,19 +145,35 @@ class AutoSleepDetectorEngine(
     /**
      * Feeds accelerometer & sensor updates from SensorSecurityManager
      */
-    fun onSensorTelemetryUpdate(totalAccel: Float, isArmed: Boolean) {
+    fun onSensorTelemetryUpdate(
+        totalAccel: Float,
+        isArmed: Boolean,
+        deviceContext: DeviceContext = DeviceContext.TABLE
+    ) {
         if (!_sleepState.value.isEnabled) return
+
+        // If phone is actively being held in hand or resting on leg, owner is NOT sleeping
+        if (deviceContext == DeviceContext.HAND || deviceContext == DeviceContext.LEG_OR_BODY) {
+            lastMovementTimestamp = System.currentTimeMillis()
+            _sleepState.update {
+                it.copy(
+                    inactivitySeconds = 0,
+                    lastSleepEventMessage = "Phone in active use (${deviceContext.displayName}). Sleep timer reset."
+                )
+            }
+            return
+        }
 
         val now = System.currentTimeMillis()
         val delta = Math.abs(totalAccel - lastRecordedAcceleration)
         lastRecordedAcceleration = totalAccel
 
-        // Movement threshold: Delta > 0.35 indicates hand touch or phone displacement
-        if (delta > 0.35f) {
+        // Movement threshold: Delta > 0.8f indicates deliberate movement (ignoring slight vibrations)
+        if (delta > 0.8f) {
             val state = _sleepState.value
 
-            if (state.isSleepArmed && isArmed) {
-                // Someone touched the phone while both Sleep Mode and System are armed!
+            if (state.isSleepArmed && isArmed && delta >= 1.5f) {
+                // Someone moved or touched phone while both Sleep Mode and System are armed!
                 handleTouchDuringSleep(totalAccel, delta)
             } else {
                 // Phone is being actively moved or disarmed, reset inactivity timer

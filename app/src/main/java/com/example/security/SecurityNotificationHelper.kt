@@ -59,7 +59,7 @@ class SecurityNotificationHelper(private val context: Context) {
 
         return NotificationCompat.Builder(context, CHANNEL_GUARD_SERVICE)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Thief Hunter Guard • Protection Active")
+            .setContentTitle("Thief Hunter is Active")
             .setContentText(statusText)
             .setSubText("$activeSensorsCount Sensors Armed")
             .setPriority(NotificationCompat.PRIORITY_LOW)

@@ -47,6 +47,9 @@ import com.example.security.BatteryOptimizer
 import com.example.security.BatteryThermalInfo
 import com.example.data.BatteryMode
 import com.example.data.OwnerFaceSampleEntity
+import com.example.data.UserDeviceEntity
+import com.example.data.FamilyDeviceEntity
+import androidx.core.content.ContextCompat
 import android.graphics.Bitmap
 import android.util.Log
 import kotlinx.coroutines.Job
@@ -424,6 +427,8 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     val batteryOptimizer = BatteryOptimizer.getInstance(application)
     private val db = AppDatabase.getDatabase(application)
     private val locationDao = db.locationHistoryDao()
+    private val userDeviceDao = db.userDeviceDao()
+    private val familyDeviceDao = db.familyDeviceDao()
 
     private var boundService: ThiefGuardService? = null
     private var isBound = false
@@ -452,6 +457,11 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         val photoUrl = AppPreferences.getUserPhotoUrl(app)
         val savedSound = AppPreferences.getAlarmSoundType(app)
         val isChargerGuardSaved = AppPreferences.isChargerGuardEnabled(app)
+        val savedMasterPin = AppPreferences.getMasterPin(app)
+        val savedSensitivity = AppPreferences.getMotionSensitivity(app)
+        val savedDelay = AppPreferences.getArmingDelaySeconds(app)
+        val isGuardActive = AppPreferences.isGuardServiceActive(app)
+        val isArmedSaved = AppPreferences.isSystemArmed(app)
 
         if (isChargerGuardSaved) {
             chargerGuard.activate()
@@ -466,10 +476,21 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
                 selectedAlarmSound = savedSound,
                 isChargerGuardActive = chargerGuard.guardState.value.isActive,
                 chargerGuardState = chargerGuard.guardState.value,
+                masterPin = savedMasterPin,
+                guardConfig = it.guardConfig.copy(
+                    motionSensitivity = savedSensitivity,
+                    armingDelaySeconds = savedDelay
+                ),
+                isSystemArmed = isArmedSaved,
                 familyNetwork = it.familyNetwork.copy(
                     accountEmail = savedEmail ?: it.familyNetwork.accountEmail
                 )
             )
+        }
+
+        // Auto-start ThiefGuardService on app open for continuous background location & protection
+        if (isGuardActive) {
+            startForegroundGuardService()
         }
 
         viewModelScope.launch {
@@ -486,6 +507,160 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             locationDao.getAllLocations().collect { list ->
                 _uiState.update { it.copy(locationHistory = list) }
+            }
+        }
+
+        // Reactively observe and seed User Devices from Room Database (IMEI & Device persistence)
+        viewModelScope.launch {
+            userDeviceDao.getAllDevices().collect { list ->
+                if (list.isEmpty()) {
+                    val defaultImei = AppPreferences.getPrimaryImei(app)
+                    val defaultName = AppPreferences.getPrimaryDeviceName(app)
+                    val defaultModel = AppPreferences.getPrimaryDeviceModel(app)
+                    val emergencyPhone = AppPreferences.getEmergencyPhone(app)
+
+                    val initialDevices = listOf(
+                        UserDeviceEntity(
+                            id = "dev_1",
+                            name = defaultName,
+                            model = defaultModel,
+                            imei = defaultImei,
+                            batteryPercent = 88,
+                            isSecured = true,
+                            isLocked = false,
+                            isSirenPlaying = false,
+                            simCardNumber = "+92 300 4589211",
+                            lastSeenAddress = "Liberty Market, Lahore",
+                            lastSeenTime = "Active now",
+                            isStolen = false,
+                            emergencyContactPhone = emergencyPhone,
+                            lastKnownLatitude = 31.5204,
+                            lastKnownLongitude = 74.3587
+                        ),
+                        UserDeviceEntity(
+                            id = "dev_2",
+                            name = "Office Work Tablet",
+                            model = "Google Pixel Tablet",
+                            imei = "864209051837492",
+                            batteryPercent = 64,
+                            isSecured = true,
+                            isLocked = false,
+                            isSirenPlaying = false,
+                            simCardNumber = "+92 321 8892104",
+                            lastSeenAddress = "Tech Hub, Block H",
+                            lastSeenTime = "12 mins ago",
+                            isStolen = false,
+                            emergencyContactPhone = "+92 321 8892104",
+                            lastKnownLatitude = 31.5280,
+                            lastKnownLongitude = 74.3610
+                        ),
+                        UserDeviceEntity(
+                            id = "dev_3",
+                            name = "Personal iPhone 15 Pro",
+                            model = "Apple iPhone 15 Pro Max",
+                            imei = "354129087654321",
+                            batteryPercent = 75,
+                            isSecured = true,
+                            isLocked = false,
+                            isSirenPlaying = false,
+                            simCardNumber = "+92 333 7712345",
+                            lastSeenAddress = "Gulberg III, Main Blvd",
+                            lastSeenTime = "25 mins ago",
+                            isStolen = false,
+                            emergencyContactPhone = "+92 333 7712345",
+                            lastKnownLatitude = 31.5122,
+                            lastKnownLongitude = 74.3489
+                        )
+                    )
+                    userDeviceDao.insertAll(initialDevices)
+                } else {
+                    val mapped = list.map { e ->
+                        MobileDevice(
+                            id = e.id,
+                            name = e.name,
+                            model = e.model,
+                            imei = e.imei,
+                            batteryPercent = e.batteryPercent,
+                            isSecured = e.isSecured,
+                            isLocked = e.isLocked,
+                            isSirenPlaying = e.isSirenPlaying,
+                            simCardNumber = e.simCardNumber,
+                            lastSeenAddress = e.lastSeenAddress,
+                            lastSeenTime = e.lastSeenTime,
+                            isStolen = e.isStolen,
+                            stolenTimestamp = e.stolenTimestamp,
+                            emergencyContactPhone = e.emergencyContactPhone,
+                            lastKnownLatitude = e.lastKnownLatitude,
+                            lastKnownLongitude = e.lastKnownLongitude
+                        )
+                    }
+                    _uiState.update { it.copy(myDevices = mapped) }
+                }
+            }
+        }
+
+        // Reactively observe and seed Family Devices from Room Database
+        viewModelScope.launch {
+            familyDeviceDao.getAllDevices().collect { list ->
+                if (list.isEmpty()) {
+                    val defaultList = listOf(
+                        FamilyDeviceEntity(
+                            id = "fam_1",
+                            name = "Sajid's Primary Phone",
+                            ownerName = "Sajid (Dad)",
+                            model = "Samsung S24 Ultra",
+                            phoneNumber = "+92 300 4589211",
+                            imei = AppPreferences.getPrimaryImei(app),
+                            role = "MASTER",
+                            isOnline = true,
+                            batteryPct = 88,
+                            isArmed = true,
+                            isStolen = false,
+                            isLocked = false,
+                            isSirenActive = false,
+                            latitude = 31.5204,
+                            longitude = 74.3587,
+                            address = "Gulberg III, Main Boulevard",
+                            lastSeenTime = "Active now",
+                            simNumber = "+92 300 ••••211",
+                            emergencyPhone = "+92 300 4589211"
+                        )
+                    )
+                    familyDeviceDao.insertAll(defaultList)
+                } else {
+                    val mappedNodes = list.map { e ->
+                        FamilyDeviceNode(
+                            id = e.id,
+                            name = e.name,
+                            ownerName = e.ownerName,
+                            model = e.model,
+                            phoneNumber = e.phoneNumber,
+                            imei = e.imei,
+                            role = when (e.role) {
+                                "MASTER" -> FamilyDeviceRole.MASTER
+                                "FAILOVER_GUARDIAN" -> FamilyDeviceRole.FAILOVER_GUARDIAN
+                                else -> FamilyDeviceRole.MEMBER
+                            },
+                            isOnline = e.isOnline,
+                            batteryPct = e.batteryPct,
+                            isArmed = e.isArmed,
+                            isStolen = e.isStolen,
+                            isLocked = e.isLocked,
+                            isSirenActive = e.isSirenActive,
+                            latitude = e.latitude,
+                            longitude = e.longitude,
+                            address = e.address,
+                            lastSeenTime = e.lastSeenTime,
+                            simNumber = e.simNumber,
+                            emergencyPhone = e.emergencyPhone,
+                            capturedPhotoCount = e.capturedPhotoCount,
+                            lastPhotoUri = e.lastPhotoUri
+                        )
+                    }
+                    _uiState.update { state ->
+                        state.copy(familyNetwork = state.familyNetwork.copy(devices = mappedNodes))
+                    }
+                }
             }
         }
 
@@ -531,7 +706,11 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         // Collect telemetry from local sensor manager
         viewModelScope.launch {
             localSensorManager.telemetry.collect { tele ->
-                autoSleepDetector.onSensorTelemetryUpdate(tele.totalAcceleration, _uiState.value.isSystemArmed)
+                autoSleepDetector.onSensorTelemetryUpdate(
+                    totalAccel = tele.totalAcceleration,
+                    isArmed = _uiState.value.isSystemArmed,
+                    deviceContext = tele.deviceContext
+                )
                 _uiState.update {
                     it.copy(
                         sensorTelemetry = tele,
@@ -709,6 +888,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
 
     fun armSystem() {
         val config = _uiState.value.guardConfig
+        AppPreferences.setSystemArmed(getApplication(), true)
         localSensorManager.startArmingSequence(config.armingDelaySeconds, config)
         boundService?.sensorManager?.startArmingSequence(config.armingDelaySeconds, config)
         showMessage("Arming countdown started: Keep phone secure!")
@@ -716,6 +896,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
 
     fun stopAlarmCompletely() {
         val app = getApplication<Application>()
+        AppPreferences.setSystemArmed(app, false)
         localSirenEngine.stopSiren()
         AlarmSirenEngine.haltAllSirens(app)
         localNotificationHelper.cancelTriggerNotification()
@@ -1268,33 +1449,32 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
 
     fun addFamilyDevice(name: String, ownerName: String, model: String, phoneNumber: String, imei: String) {
         val newId = "fam_${System.currentTimeMillis() % 10000}"
-        val newDevice = FamilyDeviceNode(
-            id = newId,
-            name = name,
-            ownerName = ownerName,
-            model = model,
-            phoneNumber = phoneNumber,
-            imei = imei,
-            role = FamilyDeviceRole.MEMBER,
-            isOnline = true,
-            batteryPct = 95,
-            isArmed = true,
-            isStolen = false,
-            isLocked = false,
-            isSirenActive = false,
-            latitude = 31.5204 + (Math.random() - 0.5) * 0.02,
-            longitude = 74.3587 + (Math.random() - 0.5) * 0.02,
-            address = "Registered Device Location",
-            lastSeenTime = "Active now",
-            simNumber = phoneNumber,
-            emergencyPhone = phoneNumber,
-            capturedPhotoCount = 0
-        )
-        _uiState.update { state ->
-            val updatedDevices = state.familyNetwork.devices + newDevice
-            state.copy(familyNetwork = state.familyNetwork.copy(devices = updatedDevices))
+        viewModelScope.launch {
+            val entity = FamilyDeviceEntity(
+                id = newId,
+                name = name,
+                ownerName = ownerName,
+                model = model,
+                phoneNumber = phoneNumber,
+                imei = imei,
+                role = "MEMBER",
+                isOnline = true,
+                batteryPct = 95,
+                isArmed = true,
+                isStolen = false,
+                isLocked = false,
+                isSirenActive = false,
+                latitude = 31.5204 + (Math.random() - 0.5) * 0.02,
+                longitude = 74.3587 + (Math.random() - 0.5) * 0.02,
+                address = "Registered Device Location",
+                lastSeenTime = "Active now",
+                simNumber = phoneNumber,
+                emergencyPhone = phoneNumber,
+                capturedPhotoCount = 0
+            )
+            familyDeviceDao.insertOrUpdate(entity)
         }
-        showMessage("Device '$name' registered into Family Network!")
+        showMessage("Device '$name' (IMEI: $imei) saved to Family Network!")
     }
 
     fun clearIntruderCaptures() {
@@ -1397,44 +1577,69 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun addMobile(name: String, model: String, imei: String) {
-        val newDev = MobileDevice(
-            id = "dev_${System.currentTimeMillis()}",
-            name = if (name.isBlank()) "My Device" else name,
-            model = if (model.isBlank()) "Generic Android" else model,
-            imei = if (imei.isBlank()) "35" + (1000000000000L..9999999999999L).random() else imei,
-            batteryPercent = 95,
-            isSecured = true,
-            isLocked = false,
-            isSirenPlaying = false,
-            simCardNumber = "+92 300 0000000",
-            lastSeenAddress = "Current Location",
-            lastSeenTime = "Just now"
-        )
-        _uiState.update { it.copy(myDevices = it.myDevices + newDev) }
-        showMessage("Device ${newDev.name} registered and protected!")
+        val finalImei = if (imei.isBlank()) "35" + (1000000000000L..9999999999999L).random() else imei.trim()
+        val finalName = if (name.isBlank()) "My Device" else name.trim()
+        val finalModel = if (model.isBlank()) "Generic Android" else model.trim()
+        val newId = "dev_${System.currentTimeMillis()}"
+
+        viewModelScope.launch {
+            val entity = UserDeviceEntity(
+                id = newId,
+                name = finalName,
+                model = finalModel,
+                imei = finalImei,
+                batteryPercent = 95,
+                isSecured = true,
+                isLocked = false,
+                isSirenPlaying = false,
+                simCardNumber = "+92 300 0000000",
+                lastSeenAddress = "Current Location",
+                lastSeenTime = "Just now",
+                emergencyContactPhone = AppPreferences.getEmergencyPhone(getApplication())
+            )
+            userDeviceDao.insertOrUpdate(entity)
+            AppPreferences.setPrimaryImei(getApplication(), finalImei)
+            AppPreferences.setPrimaryDeviceName(getApplication(), finalName)
+            AppPreferences.setPrimaryDeviceModel(getApplication(), finalModel)
+        }
+        showMessage("Device $finalName (IMEI: $finalImei) saved permanently!")
     }
 
     fun toggleDeviceLock(deviceId: String) {
-        _uiState.update { state ->
-            val updated = state.myDevices.map { dev ->
-                if (dev.id == deviceId) {
-                    val newLocked = !dev.isLocked
-                    dev.copy(isLocked = newLocked, isSecured = newLocked || dev.isSecured)
-                } else dev
+        viewModelScope.launch {
+            val dev = userDeviceDao.getDeviceById(deviceId)
+            if (dev != null) {
+                val newLocked = !dev.isLocked
+                userDeviceDao.updateLockStatus(deviceId, newLocked, newLocked || dev.isSecured)
+            } else {
+                _uiState.update { state ->
+                    val updated = state.myDevices.map { d ->
+                        if (d.id == deviceId) {
+                            val newLocked = !d.isLocked
+                            d.copy(isLocked = newLocked, isSecured = newLocked || d.isSecured)
+                        } else d
+                    }
+                    state.copy(myDevices = updated)
+                }
             }
-            state.copy(myDevices = updated)
         }
     }
 
     fun toggleDeviceSiren(deviceId: String) {
-        _uiState.update { state ->
-            val updated = state.myDevices.map { dev ->
-                if (dev.id == deviceId) {
-                    val newRinging = !dev.isSirenPlaying
-                    dev.copy(isSirenPlaying = newRinging)
-                } else dev
+        viewModelScope.launch {
+            val dev = userDeviceDao.getDeviceById(deviceId)
+            if (dev != null) {
+                userDeviceDao.updateSirenStatus(deviceId, !dev.isSirenPlaying)
+            } else {
+                _uiState.update { state ->
+                    val updated = state.myDevices.map { d ->
+                        if (d.id == deviceId) {
+                            d.copy(isSirenPlaying = !d.isSirenPlaying)
+                        } else d
+                    }
+                    state.copy(myDevices = updated)
+                }
             }
-            state.copy(myDevices = updated)
         }
     }
 
@@ -1685,14 +1890,20 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun updateDeviceEmergencyPhone(deviceId: String, newPhone: String) {
-        offlineLocationTracker.setEmergencyPhone(newPhone)
+        val trimmed = newPhone.trim()
+        offlineLocationTracker.setEmergencyPhone(trimmed)
+        AppPreferences.setEmergencyPhone(getApplication(), trimmed)
+        viewModelScope.launch {
+            userDeviceDao.updateEmergencyPhone(deviceId, trimmed)
+            familyDeviceDao.updatePhoneNumber(deviceId, trimmed)
+        }
         _uiState.update { state ->
             val updated = state.myDevices.map { dev ->
-                if (dev.id == deviceId) dev.copy(emergencyContactPhone = newPhone) else dev
+                if (dev.id == deviceId) dev.copy(emergencyContactPhone = trimmed) else dev
             }
             state.copy(myDevices = updated)
         }
-        showMessage("Emergency alert phone updated.")
+        showMessage("Emergency alert phone updated to $trimmed")
     }
 
     fun sendManualSmsAlert(deviceId: String) {
