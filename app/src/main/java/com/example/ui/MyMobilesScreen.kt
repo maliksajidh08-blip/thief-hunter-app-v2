@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,20 +19,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GpsFixed
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.ReportProblem
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.SimCard
-import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -39,10 +35,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.MobileDevice
@@ -75,6 +72,7 @@ fun MyMobilesScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+    var deviceToDelete by remember { mutableStateOf<MobileDevice?>(null) }
 
     Box(
         modifier = modifier
@@ -86,76 +84,275 @@ fun MyMobilesScreen(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            Text(
-                text = "${viewModel.tr("my_mobiles")} (${state.myDevices.size})",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize()
+            // Header Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                items(state.myDevices) { device ->
-                    DeviceCard(
-                        device = device,
-                        viewModel = viewModel,
-                        onToggleLock = { viewModel.toggleDeviceLock(device.id) },
-                        onToggleSiren = { viewModel.toggleDeviceSiren(device.id) },
-                        onTrack = { viewModel.navigateTo(Screen.LIVE_TRACKING) }
+                Column {
+                    Text(
+                        text = viewModel.tr("my_mobiles"),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = if (state.myDevices.isEmpty()) {
+                            "No registered devices"
+                        } else {
+                            "${state.myDevices.size} of 10 slots active"
+                        },
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                item {
-                    Spacer(modifier = Modifier.height(72.dp))
+                if (state.myDevices.isNotEmpty() && state.myDevices.size < 10) {
+                    Button(
+                        onClick = { showAddDialog = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = YellowAccent,
+                            contentColor = NavyDark
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("btn_top_add_device")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = "Add Device", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Body: Empty State OR List of Devices
+            if (state.myDevices.isEmpty()) {
+                // BUG 3: Empty State Implementation
+                EmptyDevicesState(
+                    onAddClick = { showAddDialog = true }
+                )
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(
+                        items = state.myDevices,
+                        key = { it.id }
+                    ) { device ->
+                        DeviceCard(
+                            device = device,
+                            onTrack = { viewModel.navigateTo(Screen.LIVE_TRACKING) },
+                            onToggleStolen = {
+                                viewModel.markDeviceStolen(device.id, !device.isStolen)
+                            },
+                            onDelete = {
+                                deviceToDelete = device
+                            }
+                        )
+                    }
+
+                    item {
+                        Spacer(modifier = Modifier.height(84.dp))
+                    }
                 }
             }
         }
 
-        // ADD MOBILE FLOATING ACTION BUTTON
-        FloatingActionButton(
-            onClick = { showAddDialog = true },
-            containerColor = YellowAccent,
-            contentColor = NavyDark,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(20.dp)
-                .testTag("fab_add_mobile")
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
+        // Floating Action Button to Add Device
+        if (state.myDevices.isNotEmpty() && state.myDevices.size < 10) {
+            FloatingActionButton(
+                onClick = { showAddDialog = true },
+                containerColor = YellowAccent,
+                contentColor = NavyDark,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(20.dp)
+                    .testTag("fab_add_mobile")
             ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Add Mobile")
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(text = viewModel.tr("add_device"), fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Add Mobile")
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = "Add Mobile", fontWeight = FontWeight.Bold)
+                }
             }
         }
 
+        // Add Device Dialog
         if (showAddDialog) {
-            AddMobileDialog(
-                viewModel = viewModel,
+            AddDeviceDialog(
+                currentDeviceCount = state.myDevices.size,
                 onDismiss = { showAddDialog = false },
-                onAdd = { name, model, imei ->
-                    viewModel.addMobile(name, model, imei)
+                onSave = { name, imei, ownerName, ownerPhone ->
+                    viewModel.addNewDevice(
+                        name = name,
+                        imei = imei,
+                        ownerName = ownerName,
+                        ownerPhone = ownerPhone
+                    )
                     showAddDialog = false
+                }
+            )
+        }
+
+        // Delete Confirmation Dialog
+        deviceToDelete?.let { target ->
+            AlertDialog(
+                onDismissRequest = { deviceToDelete = null },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = AlertRed
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Delete Device?", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    }
+                },
+                text = {
+                    Text(
+                        text = "Are you sure you want to remove '${target.name}' (IMEI: ****${target.imei.takeLast(4)}) from your protected device list?",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteDevice(target.id)
+                            deviceToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = AlertRed),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.testTag("btn_confirm_delete_device")
+                    ) {
+                        Text("Delete", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { deviceToDelete = null }) {
+                        Text("Cancel")
+                    }
                 }
             )
         }
     }
 }
 
+/**
+ * BUG 3: Clean, polished empty state when no devices are registered.
+ */
+@Composable
+fun EmptyDevicesState(
+    onAddClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Empty state decorative illustration
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(100.dp)
+                .clip(CircleShape)
+                .background(NavyPrimary.copy(alpha = 0.08f))
+                .border(2.dp, NavyPrimary.copy(alpha = 0.2f), CircleShape)
+        ) {
+            Icon(
+                imageVector = Icons.Default.PhoneAndroid,
+                contentDescription = null,
+                tint = NavyPrimary,
+                modifier = Modifier.size(50.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Text(
+            text = "No Devices Yet",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "Add your first device to get started.\nProtect up to 10 mobile phones with anti-theft sensors and silent tracking.",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        Button(
+            onClick = onAddClick,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = YellowAccent,
+                contentColor = NavyDark
+            ),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .height(50.dp)
+                .testTag("btn_add_first_device")
+        ) {
+            Icon(imageVector = Icons.Default.Add, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Add New Device",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+/**
+ * Device Card displaying:
+ * - Device Name
+ * - IMEI (last 4 digits visible: ****1234)
+ * - Owner Name
+ * - Status badge (Safe/Stolen)
+ * - Location (if available)
+ * - Battery
+ * - "Track" button
+ * - "Mark as Stolen" button
+ * - "Delete" button
+ */
 @Composable
 fun DeviceCard(
     device: MobileDevice,
-    viewModel: ThiefHunterViewModel,
-    onToggleLock: () -> Unit,
-    onToggleSiren: () -> Unit,
-    onTrack: () -> Unit
+    onTrack: () -> Unit,
+    onToggleStolen: () -> Unit,
+    onDelete: () -> Unit
 ) {
-    var showEmergencyPhoneDialog by remember { mutableStateOf(false) }
+    val maskedImei = if (device.imei.length >= 4) {
+        "•••• •••• •••• " + device.imei.takeLast(4)
+    } else {
+        device.imei
+    }
 
     Card(
         shape = RoundedCornerShape(18.dp),
@@ -167,18 +364,22 @@ fun DeviceCard(
             .fillMaxWidth()
             .border(
                 width = if (device.isStolen) 2.dp else 1.dp,
-                color = if (device.isStolen) AlertRed else if (device.isLocked) AlertRed.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                color = if (device.isStolen) AlertRed else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 shape = RoundedCornerShape(18.dp)
             )
             .testTag("device_card_${device.id}")
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // Top Row: Icon, Name, IMEI & Status Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
@@ -190,7 +391,7 @@ fun DeviceCard(
                             imageVector = if (device.isStolen) Icons.Default.Warning else Icons.Default.PhoneAndroid,
                             contentDescription = null,
                             tint = if (device.isStolen) AlertRed else NavyPrimary,
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
 
@@ -203,453 +404,189 @@ fun DeviceCard(
                             fontWeight = FontWeight.Bold,
                             color = if (device.isStolen) AlertRed else MaterialTheme.colorScheme.onSurface
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = device.model,
+                            text = "IMEI: $maskedImei",
                             fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                // BADGE: RED BADGE IF STOLEN, ELSE SECURED/LOCKED
-                if (device.isStolen) {
-                    Surface(
-                        color = AlertRed,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("stolen_red_badge_${device.id}")
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // STATUS BADGE: SAFE / STOLEN
+                Surface(
+                    color = if (device.isStolen) AlertRed else SafeGreen.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("status_badge_${device.id}")
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ReportProblem,
-                                contentDescription = "Stolen",
-                                tint = Color.White,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "STOLEN",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
-                } else {
-                    Surface(
-                        color = if (device.isLocked) AlertRed.copy(alpha = 0.15f) else SafeGreen.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
+                        Icon(
+                            imageVector = if (device.isStolen) Icons.Default.Warning else Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = if (device.isStolen) Color.White else SafeGreen,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (device.isLocked) viewModel.tr("status_locked") else viewModel.tr("status_secured"),
+                            text = if (device.isStolen) "STOLEN" else "SAFE",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (device.isLocked) AlertRed else SafeGreen,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            color = if (device.isStolen) Color.White else SafeGreen
                         )
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // IMEI & DETAILS
+            // Metadata Row: Owner, Location & Battery
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        if (device.isStolen) AlertRed.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        RoundedCornerShape(10.dp)
-                    )
-                    .padding(10.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                // Owner Info
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        tint = NavyPrimary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "IMEI: ${device.imei}",
+                        text = device.ownerName.ifBlank { "Owner" },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 2.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SimCard,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
+                    if (device.ownerPhone.isNotBlank()) {
                         Text(
-                            text = device.simCardNumber,
+                            text = " (${device.ownerPhone})",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
+                // Battery Info
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.BatteryChargingFull,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = SafeGreen
+                        tint = if (device.batteryPercent > 20) SafeGreen else AlertRed,
+                        modifier = Modifier.size(14.dp)
                     )
-                    Spacer(modifier = Modifier.width(3.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = "${device.batteryPercent}%",
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SafeGreen
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
-            // STOLEN MODE LIVE LOCATION BANNER (IF STOLEN)
-            if (device.isStolen) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Surface(
-                    color = AlertRed.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.GpsFixed,
-                                    contentDescription = null,
-                                    tint = AlertRed,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Live GPS (30s tracking active)",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = AlertRed
-                                )
-                            }
-                            Text(
-                                text = "SMS: Every 15m",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = AlertRed
-                            )
-                        }
-                        Text(
-                            text = "Last Known: Lat ${"%.4f".format(device.lastKnownLatitude)}, Lng ${"%.4f".format(device.lastKnownLongitude)}",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Sync status: ${device.lastSeenTime}",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Emergency SMS destination: ${device.emergencyContactPhone}",
-                            fontSize = 10.sp,
-                            color = NavyPrimary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Location Info
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = device.lastSeenAddress,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // PRIMARY ACTION BUTTONS
+            // Action Buttons: Track, Mark as Stolen, Delete
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
-                    onClick = onToggleSiren,
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (device.isSirenPlaying) AlertRed else NavyPrimary
-                    ),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = if (device.isSirenPlaying) Icons.Default.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (device.isSirenPlaying) viewModel.tr("quick_stop") else viewModel.tr("ring_siren"),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                Button(
-                    onClick = onToggleLock,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (device.isLocked) SafeGreen else AlertRed,
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = if (device.isLocked) Icons.Default.LockOpen else Icons.Default.Lock,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (device.isLocked) viewModel.tr("unlock_device") else viewModel.tr("remote_lock"),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
+                // 1. Track Button
                 Button(
                     onClick = onTrack,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = YellowAccent,
-                        contentColor = NavyDark
-                    ),
-                    modifier = Modifier.size(42.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                        .testTag("btn_track_${device.id}"),
+                    colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.GpsFixed,
-                        contentDescription = "Track",
-                        modifier = Modifier.size(18.dp)
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
                     )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // STOLEN MODE CONTROLS (MARK AS STOLEN / UNMARK / SEND SMS NOW)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (!device.isStolen) {
-                    Button(
-                        onClick = { viewModel.markDeviceAsStolen(device.id) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AlertRed,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(38.dp)
-                            .testTag("btn_mark_stolen_${device.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Mark as Stolen",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                } else {
-                    Button(
-                        onClick = { viewModel.unmarkDeviceStolen(device.id) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = SafeGreen,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(38.dp)
-                            .testTag("btn_recover_device_${device.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Mark Recovered",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = { viewModel.sendManualSmsAlert(device.id) },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AlertRed),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(38.dp)
-                            .testTag("btn_send_sms_${device.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Send,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Send SMS Now",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "Track", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
-                // Edit emergency contact phone button
-                OutlinedButton(
-                    onClick = { showEmergencyPhoneDialog = true },
-                    shape = RoundedCornerShape(10.dp),
+                // 2. Mark as Stolen / Safe Button
+                Button(
+                    onClick = onToggleStolen,
                     modifier = Modifier
-                        .size(38.dp)
-                        .testTag("btn_edit_phone_${device.id}"),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        .weight(1.3f)
+                        .height(36.dp)
+                        .testTag("btn_stolen_toggle_${device.id}"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (device.isStolen) SafeGreen else AlertRed
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit SMS Contact",
-                        tint = NavyPrimary,
-                        modifier = Modifier.size(16.dp)
+                        imageVector = if (device.isStolen) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
                     )
-                }
-            }
-        }
-    }
-
-    if (showEmergencyPhoneDialog) {
-        var newPhone by remember { mutableStateOf(device.emergencyContactPhone) }
-        AlertDialog(
-            onDismissRequest = { showEmergencyPhoneDialog = false },
-            title = {
-                Text(
-                    text = "Emergency SMS Contact",
-                    fontWeight = FontWeight.Bold,
-                    color = NavyPrimary
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "When ${device.name} is marked stolen, alerts with live GPS coordinates will be sent via SMS to this number every 15 minutes.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    OutlinedTextField(
-                        value = newPhone,
-                        onValueChange = { newPhone = it },
-                        label = { Text("Phone Number") },
-                        placeholder = { Text("+92 300 1234567") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        text = if (device.isStolen) "Mark Safe" else "Mark Stolen",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.updateDeviceEmergencyPhone(device.id, newPhone)
-                        showEmergencyPhoneDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = YellowAccent, contentColor = NavyDark)
+
+                // 3. Delete Button
+                OutlinedButton(
+                    onClick = onDelete,
+                    modifier = Modifier
+                        .weight(0.9f)
+                        .height(36.dp)
+                        .testTag("btn_delete_${device.id}"),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp)
                 ) {
-                    Text("Save Phone", fontWeight = FontWeight.Bold)
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = AlertRed,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "Delete", fontSize = 11.sp, color = AlertRed, fontWeight = FontWeight.SemiBold)
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEmergencyPhoneDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-}
-
-@Composable
-fun AddMobileDialog(
-    viewModel: ThiefHunterViewModel,
-    onDismiss: () -> Unit,
-    onAdd: (name: String, model: String, imei: String) -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    var model by remember { mutableStateOf("") }
-    var imei by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = viewModel.tr("add_device"),
-                fontWeight = FontWeight.Bold,
-                color = NavyPrimary
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(viewModel.tr("device_name")) },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("input_device_name")
-                )
-                OutlinedTextField(
-                    value = model,
-                    onValueChange = { model = it },
-                    label = { Text(viewModel.tr("device_model")) },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("input_device_model")
-                )
-                OutlinedTextField(
-                    value = imei,
-                    onValueChange = { if (it.length <= 15) imei = it },
-                    label = { Text(viewModel.tr("imei_number")) },
-                    placeholder = { Text("15 digits") },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("input_device_imei")
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onAdd(name, model, imei) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = YellowAccent,
-                    contentColor = NavyDark
-                ),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.testTag("btn_confirm_add_device")
-            ) {
-                Text(text = viewModel.tr("save"), fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = viewModel.tr("cancel"))
             }
         }
-    )
+    }
 }

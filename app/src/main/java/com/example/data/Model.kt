@@ -1,5 +1,8 @@
 package com.example.data
 
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
 enum class AppLanguage(val code: String, val displayName: String, val nativeName: String, val isRtl: Boolean) {
     ENGLISH("en", "English", "English", false),
     URDU("ur", "Urdu", "اردو", true),
@@ -15,23 +18,43 @@ enum class DeviceStatus {
     DISCONNECTED
 }
 
+/**
+ * Room Database Entity for User Registered Mobiles.
+ */
+@Entity(tableName = "devices")
+data class DeviceEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val name: String,
+    val imei: String,
+    val ownerName: String,
+    val ownerPhone: String = "",
+    val isStolen: Boolean = false,
+    val lastLocation: String = "Location pending",
+    val lastBattery: Int = 100,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 data class MobileDevice(
     val id: String,
     val name: String,
-    val model: String,
+    val model: String = "Android Device",
     val imei: String,
-    val batteryPercent: Int,
+    val ownerName: String = "",
+    val ownerPhone: String = "",
+    val batteryPercent: Int = 100,
     val isSecured: Boolean = true,
     val isLocked: Boolean = false,
     val isSirenPlaying: Boolean = false,
     val simCardNumber: String = "+92 300 ••••123",
-    val lastSeenAddress: String = "Gulberg III, Main Blvd",
+    val lastSeenAddress: String = "Location pending",
     val lastSeenTime: String = "Just now",
     val isStolen: Boolean = false,
     val stolenTimestamp: String? = null,
     val emergencyContactPhone: String = "+92 300 1234567",
     val lastKnownLatitude: Double = 31.5204,
-    val lastKnownLongitude: Double = 74.3587
+    val lastKnownLongitude: Double = 74.3587,
+    val createdAt: Long = System.currentTimeMillis()
 )
 
 enum class ReportStatus {

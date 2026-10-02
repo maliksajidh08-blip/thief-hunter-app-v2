@@ -211,15 +211,46 @@ interface UserDeviceDao {
     suspend fun deleteDevice(deviceId: String)
 }
 
+@Dao
+interface DeviceDao {
+    @Query("SELECT * FROM devices ORDER BY id DESC")
+    fun getAllDevices(): Flow<List<DeviceEntity>>
+
+    @Query("SELECT * FROM devices ORDER BY id DESC")
+    suspend fun getAllDevicesOnce(): List<DeviceEntity>
+
+    @Query("SELECT * FROM devices WHERE id = :id LIMIT 1")
+    suspend fun getDeviceById(id: Long): DeviceEntity?
+
+    @Query("SELECT * FROM devices WHERE imei = :imei LIMIT 1")
+    suspend fun getDeviceByImei(imei: String): DeviceEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDevice(device: DeviceEntity): Long
+
+    @Update
+    suspend fun updateDevice(device: DeviceEntity)
+
+    @Query("UPDATE devices SET isStolen = :isStolen WHERE id = :id")
+    suspend fun updateStolenStatus(id: Long, isStolen: Boolean)
+
+    @Query("DELETE FROM devices WHERE id = :id")
+    suspend fun deleteDevice(id: Long)
+
+    @Query("DELETE FROM devices")
+    suspend fun deleteAllDevices()
+}
+
 @Database(
     entities = [
         FamilyDeviceEntity::class,
         IntruderCaptureEntity::class,
         LocationHistoryEntity::class,
         OwnerFaceSampleEntity::class,
-        UserDeviceEntity::class
+        UserDeviceEntity::class,
+        DeviceEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -228,6 +259,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun locationHistoryDao(): LocationHistoryDao
     abstract fun ownerFaceDao(): OwnerFaceDao
     abstract fun userDeviceDao(): UserDeviceDao
+    abstract fun deviceDao(): DeviceDao
 
     companion object {
         @Volatile

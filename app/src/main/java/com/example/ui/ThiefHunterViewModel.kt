@@ -52,12 +52,14 @@ import com.example.security.AIDecisionAction
 import com.example.data.BatteryMode
 import com.example.data.OwnerFaceSampleEntity
 import com.example.data.UserDeviceEntity
+import com.example.data.DeviceEntity
 import com.example.data.FamilyDeviceEntity
 import androidx.core.content.ContextCompat
 import android.graphics.Bitmap
 import android.util.Log
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -110,98 +112,7 @@ data class UiState(
             wasPinWrong = true
         )
     ),
-    val myDevices: List<MobileDevice> = listOf(
-        MobileDevice(
-            id = "dev_1",
-            name = "My Primary Phone",
-            model = "Samsung Galaxy S24 Ultra",
-            imei = "358941092837461",
-            batteryPercent = 88,
-            isSecured = true,
-            isLocked = false,
-            isSirenPlaying = false,
-            simCardNumber = "+92 300 4589211",
-            lastSeenAddress = "Liberty Market, Lahore",
-            lastSeenTime = "Active now",
-            isStolen = false,
-            stolenTimestamp = null,
-            emergencyContactPhone = "+92 300 4589211",
-            lastKnownLatitude = 31.5204,
-            lastKnownLongitude = 74.3587
-        ),
-        MobileDevice(
-            id = "dev_2",
-            name = "Office Work Tablet",
-            model = "Google Pixel Tablet",
-            imei = "864209051837492",
-            batteryPercent = 64,
-            isSecured = true,
-            isLocked = false,
-            isSirenPlaying = false,
-            simCardNumber = "+92 321 8892104",
-            lastSeenAddress = "Tech Hub, Block H",
-            lastSeenTime = "12 mins ago",
-            isStolen = false,
-            stolenTimestamp = null,
-            emergencyContactPhone = "+92 321 8892104",
-            lastKnownLatitude = 31.5280,
-            lastKnownLongitude = 74.3610
-        ),
-        MobileDevice(
-            id = "dev_3",
-            name = "Personal iPhone 15 Pro",
-            model = "Apple iPhone 15 Pro Max",
-            imei = "354129087654321",
-            batteryPercent = 75,
-            isSecured = true,
-            isLocked = false,
-            isSirenPlaying = false,
-            simCardNumber = "+92 333 7712345",
-            lastSeenAddress = "Gulberg III, Main Blvd",
-            lastSeenTime = "25 mins ago",
-            isStolen = false,
-            stolenTimestamp = null,
-            emergencyContactPhone = "+92 333 7712345",
-            lastKnownLatitude = 31.5122,
-            lastKnownLongitude = 74.3489
-        ),
-        MobileDevice(
-            id = "dev_4",
-            name = "Family Backup Mobile",
-            model = "Xiaomi Redmi Note 13 Pro",
-            imei = "869402061234567",
-            batteryPercent = 91,
-            isSecured = true,
-            isLocked = false,
-            isSirenPlaying = false,
-            simCardNumber = "+92 345 9901234",
-            lastSeenAddress = "Cantt Saddar Bazaar",
-            lastSeenTime = "1 hour ago",
-            isStolen = false,
-            stolenTimestamp = null,
-            emergencyContactPhone = "+92 345 9901234",
-            lastKnownLatitude = 31.5390,
-            lastKnownLongitude = 74.3720
-        ),
-        MobileDevice(
-            id = "dev_5",
-            name = "Travel OnePlus 12",
-            model = "OnePlus 12 5G Flagship",
-            imei = "357891043218765",
-            batteryPercent = 43,
-            isSecured = true,
-            isLocked = false,
-            isSirenPlaying = false,
-            simCardNumber = "+92 302 1122334",
-            lastSeenAddress = "Allama Iqbal Airport Terminal",
-            lastSeenTime = "2 hours ago",
-            isStolen = false,
-            stolenTimestamp = null,
-            emergencyContactPhone = "+92 302 1122334",
-            lastKnownLatitude = 31.5217,
-            lastKnownLongitude = 74.4036
-        )
-    ),
+    val myDevices: List<MobileDevice> = emptyList(),
     val stolenReports: List<StolenReport> = listOf(
         StolenReport(
             id = "rep_1",
@@ -443,6 +354,7 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
     private val db = AppDatabase.getDatabase(application)
     private val locationDao = db.locationHistoryDao()
     private val userDeviceDao = db.userDeviceDao()
+    private val deviceDao = db.deviceDao()
     private val familyDeviceDao = db.familyDeviceDao()
 
     private var boundService: ThiefGuardService? = null
@@ -525,92 +437,30 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
-        // Reactively observe and seed User Devices from Room Database (IMEI & Device persistence)
+        // Reactively observe user devices from Room Database (starts EMPTY with no fake devices)
         viewModelScope.launch {
-            userDeviceDao.getAllDevices().collect { list ->
-                if (list.isEmpty()) {
-                    val defaultImei = AppPreferences.getPrimaryImei(app)
-                    val defaultName = AppPreferences.getPrimaryDeviceName(app)
-                    val defaultModel = AppPreferences.getPrimaryDeviceModel(app)
-                    val emergencyPhone = AppPreferences.getEmergencyPhone(app)
-
-                    val initialDevices = listOf(
-                        UserDeviceEntity(
-                            id = "dev_1",
-                            name = defaultName,
-                            model = defaultModel,
-                            imei = defaultImei,
-                            batteryPercent = 88,
-                            isSecured = true,
-                            isLocked = false,
-                            isSirenPlaying = false,
-                            simCardNumber = "+92 300 4589211",
-                            lastSeenAddress = "Liberty Market, Lahore",
-                            lastSeenTime = "Active now",
-                            isStolen = false,
-                            emergencyContactPhone = emergencyPhone,
-                            lastKnownLatitude = 31.5204,
-                            lastKnownLongitude = 74.3587
-                        ),
-                        UserDeviceEntity(
-                            id = "dev_2",
-                            name = "Office Work Tablet",
-                            model = "Google Pixel Tablet",
-                            imei = "864209051837492",
-                            batteryPercent = 64,
-                            isSecured = true,
-                            isLocked = false,
-                            isSirenPlaying = false,
-                            simCardNumber = "+92 321 8892104",
-                            lastSeenAddress = "Tech Hub, Block H",
-                            lastSeenTime = "12 mins ago",
-                            isStolen = false,
-                            emergencyContactPhone = "+92 321 8892104",
-                            lastKnownLatitude = 31.5280,
-                            lastKnownLongitude = 74.3610
-                        ),
-                        UserDeviceEntity(
-                            id = "dev_3",
-                            name = "Personal iPhone 15 Pro",
-                            model = "Apple iPhone 15 Pro Max",
-                            imei = "354129087654321",
-                            batteryPercent = 75,
-                            isSecured = true,
-                            isLocked = false,
-                            isSirenPlaying = false,
-                            simCardNumber = "+92 333 7712345",
-                            lastSeenAddress = "Gulberg III, Main Blvd",
-                            lastSeenTime = "25 mins ago",
-                            isStolen = false,
-                            emergencyContactPhone = "+92 333 7712345",
-                            lastKnownLatitude = 31.5122,
-                            lastKnownLongitude = 74.3489
-                        )
+            deviceDao.getAllDevices().collect { list ->
+                val mapped = list.map { e ->
+                    MobileDevice(
+                        id = e.id.toString(),
+                        name = e.name,
+                        model = "Android Device",
+                        imei = e.imei,
+                        ownerName = e.ownerName,
+                        ownerPhone = e.ownerPhone,
+                        batteryPercent = e.lastBattery,
+                        isSecured = !e.isStolen,
+                        isLocked = false,
+                        isSirenPlaying = false,
+                        simCardNumber = e.ownerPhone.ifBlank { "+92 300 ••••123" },
+                        lastSeenAddress = e.lastLocation,
+                        lastSeenTime = "Active",
+                        isStolen = e.isStolen,
+                        emergencyContactPhone = e.ownerPhone,
+                        createdAt = e.createdAt
                     )
-                    userDeviceDao.insertAll(initialDevices)
-                } else {
-                    val mapped = list.map { e ->
-                        MobileDevice(
-                            id = e.id,
-                            name = e.name,
-                            model = e.model,
-                            imei = e.imei,
-                            batteryPercent = e.batteryPercent,
-                            isSecured = e.isSecured,
-                            isLocked = e.isLocked,
-                            isSirenPlaying = e.isSirenPlaying,
-                            simCardNumber = e.simCardNumber,
-                            lastSeenAddress = e.lastSeenAddress,
-                            lastSeenTime = e.lastSeenTime,
-                            isStolen = e.isStolen,
-                            stolenTimestamp = e.stolenTimestamp,
-                            emergencyContactPhone = e.emergencyContactPhone,
-                            lastKnownLatitude = e.lastKnownLatitude,
-                            lastKnownLongitude = e.lastKnownLongitude
-                        )
-                    }
-                    _uiState.update { it.copy(myDevices = mapped) }
                 }
+                _uiState.update { it.copy(myDevices = mapped) }
             }
         }
 
@@ -1627,33 +1477,92 @@ class ThiefHunterViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun addMobile(name: String, model: String, imei: String) {
-        val finalImei = if (imei.isBlank()) "35" + (1000000000000L..9999999999999L).random() else imei.trim()
-        val finalName = if (name.isBlank()) "My Device" else name.trim()
-        val finalModel = if (model.isBlank()) "Generic Android" else model.trim()
-        val newId = "dev_${System.currentTimeMillis()}"
+    fun getAllDevices(): Flow<List<DeviceEntity>> {
+        return deviceDao.getAllDevices()
+    }
+
+    fun addNewDevice(name: String, imei: String, ownerName: String, ownerPhone: String) {
+        if (_uiState.value.myDevices.size >= 10) {
+            showMessage("Maximum limit of 10 devices reached.")
+            return
+        }
+        val cleanImei = imei.filter { it.isDigit() }
+        if (cleanImei.length != 15) {
+            showMessage("IMEI must be exactly 15 digits.")
+            return
+        }
+        val cleanName = name.trim().ifBlank { "My Mobile" }
+        val cleanOwner = ownerName.trim().ifBlank { "Owner" }
+        val cleanPhone = ownerPhone.trim()
 
         viewModelScope.launch {
-            val entity = UserDeviceEntity(
-                id = newId,
-                name = finalName,
-                model = finalModel,
-                imei = finalImei,
-                batteryPercent = 95,
-                isSecured = true,
-                isLocked = false,
-                isSirenPlaying = false,
-                simCardNumber = "+92 300 0000000",
-                lastSeenAddress = "Current Location",
-                lastSeenTime = "Just now",
-                emergencyContactPhone = AppPreferences.getEmergencyPhone(getApplication())
+            val entity = DeviceEntity(
+                name = cleanName,
+                imei = cleanImei,
+                ownerName = cleanOwner,
+                ownerPhone = cleanPhone,
+                isStolen = false,
+                lastLocation = "Current Location",
+                lastBattery = 100,
+                createdAt = System.currentTimeMillis()
             )
-            userDeviceDao.insertOrUpdate(entity)
-            AppPreferences.setPrimaryImei(getApplication(), finalImei)
-            AppPreferences.setPrimaryDeviceName(getApplication(), finalName)
-            AppPreferences.setPrimaryDeviceModel(getApplication(), finalModel)
+            deviceDao.insertDevice(entity)
+
+            // If this is the primary or first device, also sync primary IMEI
+            if (_uiState.value.myDevices.isEmpty()) {
+                AppPreferences.setPrimaryImei(getApplication(), cleanImei)
+                AppPreferences.setPrimaryDeviceName(getApplication(), cleanName)
+                if (cleanPhone.isNotBlank()) {
+                    AppPreferences.setEmergencyPhone(getApplication(), cleanPhone)
+                    offlineLocationTracker.emergencyPhoneNumber = cleanPhone
+                }
+            }
+            showMessage("✓ Device '$cleanName' (IMEI: ****${cleanImei.takeLast(4)}) added successfully!")
         }
-        showMessage("Device $finalName (IMEI: $finalImei) saved permanently!")
+    }
+
+    fun deleteDevice(deviceId: String) {
+        val idLong = deviceId.toLongOrNull()
+        viewModelScope.launch {
+            if (idLong != null) {
+                deviceDao.deleteDevice(idLong)
+            } else {
+                userDeviceDao.deleteDevice(deviceId)
+            }
+            showMessage("Device deleted successfully.")
+        }
+    }
+
+    fun markDeviceStolen(deviceId: String, isStolen: Boolean) {
+        val idLong = deviceId.toLongOrNull()
+        viewModelScope.launch {
+            if (idLong != null) {
+                deviceDao.updateStolenStatus(idLong, isStolen)
+            } else {
+                userDeviceDao.getDeviceById(deviceId)?.let { dev ->
+                    userDeviceDao.insertOrUpdate(dev.copy(isStolen = isStolen))
+                }
+            }
+
+            val dev = _uiState.value.myDevices.find { it.id == deviceId }
+            if (isStolen) {
+                if (dev != null && dev.ownerPhone.isNotBlank()) {
+                    offlineLocationTracker.emergencyPhoneNumber = dev.ownerPhone
+                }
+                offlineLocationTracker.setDeviceStolen(true)
+                localSirenEngine.startSiren("EMERGENCY_ALARM")
+                recordIntruderCapture("Device Flagged Stolen: ${dev?.name ?: deviceId}")
+                showMessage("🚨 Device marked as STOLEN! Alarm active & live SMS tracking engaged.")
+            } else {
+                localSirenEngine.stopSiren()
+                offlineLocationTracker.setDeviceStolen(false)
+                showMessage("✓ Device marked as SAFE. Normal protection restored.")
+            }
+        }
+    }
+
+    fun addMobile(name: String, model: String, imei: String) {
+        addNewDevice(name = name, imei = imei, ownerName = "Owner", ownerPhone = "")
     }
 
     fun toggleDeviceLock(deviceId: String) {
